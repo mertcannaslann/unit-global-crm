@@ -1739,6 +1739,11 @@ function CalendarPage({ user }: { user: User }) {
 }
 
 const marketSources = ["Sahibinden", "Hepsiemlak", "Emlakjet"] as const;
+const marketSourceLabels: Record<(typeof marketSources)[number], string> = {
+  Sahibinden: "Sahibinden",
+  Hepsiemlak: "Hürriyet Emlak / Hepsiemlak",
+  Emlakjet: "Emlakjet",
+};
 
 function normalizeMarketText(value: string) {
   return value.toLocaleLowerCase("tr").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c");
@@ -1825,7 +1830,7 @@ function MarketAnalysisPage({ user }: { user: User }) {
   const platformData = marketSources.map((source) => {
     const rows = activeListings.filter((item) => item.source === source);
     return {
-      name: source,
+      name: marketSourceLabels[source],
       ortalama: rows.length ? Math.round(rows.reduce((sum, item) => sum + item.price, 0) / rows.length) : 0,
       m2: rows.length ? Math.round(rows.reduce((sum, item) => sum + item.price / item.squareMeters, 0) / rows.length) : 0,
       adet: rows.length,
@@ -1911,7 +1916,7 @@ function MarketAnalysisPage({ user }: { user: User }) {
             <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-4">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{item.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{item.source} · {item.neighborhood}, {item.street} · {item.rooms} · {item.squareMeters} m²</p>
+                <p className="mt-1 text-xs text-muted-foreground">{marketSourceLabels[item.source]} · {item.neighborhood}, {item.street} · {item.rooms} · {item.squareMeters} m²</p>
                 <a className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary" href={item.url} target="_blank" rel="noreferrer">
                   İlanı aç
                   <ExternalLink className="h-3 w-3" />
@@ -2028,38 +2033,31 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
   {
     key: "sahibinden",
     name: "Sahibinden",
-    status: "Başvuru bekleniyor / Demo mod aktif",
+    status: "Kurumsal mağaza bağlantısı",
     scope: "Sadece kendi kurumsal mağaza ve yetkili portföy ilanları",
     fields: [
-      { id: "applicationNo", label: "API başvuru no", placeholder: "Örn: SB-2026-0001" },
-      { id: "storeUrl", label: "Kurumsal mağaza linki", placeholder: "https://unitglobal.sahibinden.com/" },
-      { id: "clientId", label: "Client ID", placeholder: "Sahibinden tarafından verilecek" },
-      { id: "clientSecret", label: "Client secret / token", placeholder: "Güvenli erişim anahtarı", secret: true },
-      { id: "authorizedEmail", label: "Yetkili e-posta", placeholder: "owner@firma.com" },
+      { id: "storeUrl", label: "Mağaza linki", placeholder: "https://unitglobal.sahibinden.com/" },
+      { id: "apiKey", label: "API anahtarı", placeholder: "Başvuru sonrası girilecek", secret: true },
     ],
   },
   {
     key: "emlakjet",
     name: "Emlakjet",
-    status: "API-ready başvuru formu",
+    status: "Ofis hesabı bağlantısı",
     scope: "İzinli portföy ve lokasyon bazlı emsal verisi",
     fields: [
-      { id: "companyId", label: "Firma / bayi ID", placeholder: "Emlakjet firma ID" },
-      { id: "apiKey", label: "API key", placeholder: "Emlakjet API anahtarı", secret: true },
-      { id: "webhookUrl", label: "Webhook URL", placeholder: "https://crm.farikaistanbul.com/api/webhooks/emlakjet" },
-      { id: "authorizedEmail", label: "Yetkili e-posta", placeholder: "owner@firma.com" },
+      { id: "companyId", label: "Ofis / firma kodu", placeholder: "Emlakjet firma kodu" },
+      { id: "apiKey", label: "API anahtarı", placeholder: "Emlakjet tarafından verilecek", secret: true },
     ],
   },
   {
     key: "hepsiemlak",
-    name: "Hepsiemlak",
-    status: "API-ready başvuru formu",
+    name: "Hürriyet Emlak / Hepsiemlak",
+    status: "Ofis hesabı bağlantısı",
     scope: "İzinli portföy ve lokasyon bazlı emsal verisi",
     fields: [
-      { id: "officeCode", label: "Ofis kodu", placeholder: "Hepsiemlak ofis kodu" },
-      { id: "apiKey", label: "API key", placeholder: "Hepsiemlak API anahtarı", secret: true },
-      { id: "webhookUrl", label: "Webhook URL", placeholder: "https://crm.farikaistanbul.com/api/webhooks/hepsiemlak" },
-      { id: "authorizedEmail", label: "Yetkili e-posta", placeholder: "owner@firma.com" },
+      { id: "officeCode", label: "Ofis / mağaza kodu", placeholder: "Hürriyet Emlak / Hepsiemlak kodu" },
+      { id: "apiKey", label: "API anahtarı", placeholder: "Platform tarafından verilecek", secret: true },
     ],
   },
   {
@@ -2068,10 +2066,8 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
     status: "Doküman klasörü bağlantısı",
     scope: "Tapu, yetki belgesi, sözleşme ve müşteri dosyaları",
     fields: [
-      { id: "clientId", label: "Google OAuth Client ID", placeholder: "Google Cloud OAuth Client ID" },
-      { id: "apiKey", label: "Google API key", placeholder: "Google Drive API anahtarı", secret: true },
-      { id: "folderId", label: "Ana Drive klasör ID", placeholder: "Drive klasör linkindeki ID" },
-      { id: "ownerEmail", label: "Yetkili Google e-postası", placeholder: "owner@gmail.com" },
+      { id: "folderLink", label: "Drive klasör linki", placeholder: "Paylaşılan Google Drive klasör linki" },
+      { id: "connectionCode", label: "Bağlantı kodu", placeholder: "Google bağlantı kodu", secret: true },
     ],
   },
   {
@@ -2080,10 +2076,8 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
     status: "Randevu senkronizasyonu",
     scope: "Takvim, randevu, yer gösterimi ve takip görevleri",
     fields: [
-      { id: "calendarId", label: "Calendar ID", placeholder: "primary veya takvim ID" },
-      { id: "clientId", label: "Google OAuth Client ID", placeholder: "Google Cloud OAuth Client ID" },
-      { id: "clientSecret", label: "Client secret", placeholder: "Google OAuth secret", secret: true },
-      { id: "ownerEmail", label: "Yetkili Google e-postası", placeholder: "owner@gmail.com" },
+      { id: "calendarLink", label: "Takvim linki / ID", placeholder: "Google Takvim linki veya Calendar ID" },
+      { id: "connectionCode", label: "Bağlantı kodu", placeholder: "Google bağlantı kodu", secret: true },
     ],
   },
 ];
@@ -2116,11 +2110,11 @@ function IntegrationsPage() {
   const hasAnyValue = (integrationKey: string) => Object.values(drafts[integrationKey] ?? {}).some((value) => value.trim().length > 0);
   const testGoogleDrive = () => {
     const drive = drafts.googleDrive ?? {};
-    if (!drive.clientId && !drive.folderId && !drive.ownerEmail) {
-      toast.error("Google Drive için Client ID, klasör ID veya yetkili e-posta girin.");
+    if (!drive.folderLink && !drive.connectionCode) {
+      toast.error("Google Drive klasör linkini veya bağlantı kodunu girin.");
       return;
     }
-    toast.success("Google Drive bağlantı bilgileri hazır. Doküman klasörü entegrasyona bağlanabilir.");
+    toast.success("Google Drive klasörü bağlantıya hazır.");
   };
 
   return (
@@ -2137,7 +2131,7 @@ function IntegrationsPage() {
             </div>
             <div className="mt-5 space-y-3 text-sm">
               <InfoRow label="Veri kapsamı" value={integration.scope} />
-              <InfoRow label="Canlı çekim" value="API bilgisi girilince" />
+              <InfoRow label="Durum" value={hasAnyValue(integration.key) ? "Bağlantı bilgisi hazır" : "Bağlantı bekleniyor"} />
               <InfoRow label="Scraping" value="Yok" />
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -2170,7 +2164,7 @@ function IntegrationsPage() {
       <Card className="p-5">
         <SectionTitle title="Uyum Notu" />
         <p className="text-sm leading-6 text-muted-foreground">
-          Sahibinden, Emlakjet ve Hepsiemlak için canlı scraping, captcha/proxy bypass veya izinsiz genel ilan çekimi yoktur. Yapı yalnızca firma sahibinin girdiği izinli API erişimleriyle çalışacak şekilde hazırlanmıştır. Son Sahibinden demo senkronizasyonu: {data.setting.lastSahibindenSyncAt ? shortDate(data.setting.lastSahibindenSyncAt) : "Henüz yok"}.
+          Sahibinden, Emlakjet ve Hürriyet Emlak / Hepsiemlak için canlı scraping, captcha/proxy bypass veya izinsiz genel ilan çekimi yoktur. Yapı yalnızca firma sahibinin girdiği izinli API erişimleriyle çalışacak şekilde hazırlanmıştır. Son Sahibinden demo senkronizasyonu: {data.setting.lastSahibindenSyncAt ? shortDate(data.setting.lastSahibindenSyncAt) : "Henüz yok"}.
         </p>
       </Card>
     </div>
@@ -2178,7 +2172,7 @@ function IntegrationsPage() {
 }
 
 function SettingsPage({ user }: { user: User }) {
-  const { data, addUser, updateUser } = useCrm();
+  const { data, addUser, updateUser, deleteUser } = useCrm();
   const isPlatform = user.role === "ADMIN";
   const members = officeUsers(data.users);
   const [newUserName, setNewUserName] = useState("");
@@ -2289,14 +2283,28 @@ function SettingsPage({ user }: { user: User }) {
                   <td className="px-4 py-3 text-muted-foreground">{member.phone}</td>
                   <td className="px-4 py-3"><Badge label={member.active ? "Aktif" : "Pasif"} /></td>
                   <td className="px-4 py-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={member.role === "OFFICE_MANAGER"}
-                      onClick={() => updateUser(member.id, { active: !member.active })}
-                    >
-                      {member.active ? "Pasifleştir" : "Aktifleştir"}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={member.role === "OFFICE_MANAGER"}
+                        onClick={() => updateUser(member.id, { active: !member.active })}
+                      >
+                        {member.active ? "Pasifleştir" : "Aktifleştir"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={member.role === "OFFICE_MANAGER"}
+                        onClick={() => {
+                          if (window.confirm(`${member.name} silinsin mi? Bağlı kayıtlar ofis sahibine devredilecek.`)) {
+                            deleteUser(member.id, user.id);
+                          }
+                        }}
+                      >
+                        Sil
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
