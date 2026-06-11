@@ -1821,6 +1821,7 @@ function MarketAnalysisPage({ user }: { user: User }) {
   const averageSqmPrice = activeListings.length ? Math.round(activeListings.reduce((sum, item) => sum + item.price / item.squareMeters, 0) / activeListings.length) : 0;
   const minPrice = activeListings.length ? Math.min(...activeListings.map((item) => item.price)) : 0;
   const maxPrice = activeListings.length ? Math.max(...activeListings.map((item) => item.price)) : 0;
+  const zeroSafeMoney = (value: number) => new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
   const platformData = marketSources.map((source) => {
     const rows = activeListings.filter((item) => item.source === source);
     return {
@@ -1858,10 +1859,10 @@ function MarketAnalysisPage({ user }: { user: User }) {
         Piyasa analizi API anahtarları girilip izinli ilan verileri çekildiğinde kendi portföylerinize göre çalışır. Şu an sistem sonuç uydurmaz; kayıt yoksa değerler 0 kalır.
       </Card>
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Ortalama fiyat" value={money(averagePrice)} detail="Kendi ilan verisi" />
-        <Metric label="Minimum" value={money(minPrice)} detail="En düşük aktif kayıt" />
-        <Metric label="Maksimum" value={money(maxPrice)} detail="En yüksek aktif kayıt" />
-        <Metric label="m² Fiyatı" value={money(averageSqmPrice)} detail={`${activeListings.length} platform kaydı`} />
+        <Metric label="Ortalama fiyat" value={zeroSafeMoney(averagePrice)} detail="Kendi ilan verisi" />
+        <Metric label="Minimum" value={zeroSafeMoney(minPrice)} detail="En düşük aktif kayıt" />
+        <Metric label="Maksimum" value={zeroSafeMoney(maxPrice)} detail="En yüksek aktif kayıt" />
+        <Metric label="m² Fiyatı" value={zeroSafeMoney(averageSqmPrice)} detail={`${activeListings.length} platform kaydı`} />
       </div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className="p-5">
