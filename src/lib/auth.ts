@@ -12,7 +12,7 @@ export const authOptions: AuthOptions = {
   },
   providers: [
     CredentialsProvider({
-      name: "Unit Global Demo Login",
+      name: "Emlak Ofisi CRM Login",
       credentials: {
         email: { label: "E-posta", type: "email" },
         password: { label: "Şifre", type: "password" },
