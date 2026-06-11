@@ -50,10 +50,10 @@ export default function LoginPage() {
           <div className="mb-16 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
             <Building2 className="h-6 w-6" />
           </div>
-          <p className="mb-3 text-sm font-medium uppercase tracking-[0.18em] text-blue-100">Unit Global</p>
+          <p className="mb-3 text-sm font-medium uppercase tracking-[0.18em] text-blue-100">Emlak Ofisi CRM</p>
           <h1 className="max-w-md text-4xl font-semibold leading-tight md:text-5xl">Real Estate Operating System</h1>
           <p className="mt-5 max-w-md text-sm leading-6 text-blue-100">
-            Ofis hesabı aç, kullanıcı sayısını belirle, owner ve danışman girişlerini üret, emlak operasyonunu tek panelden yönet.
+            Farklı emlak ofislerine hesap aç, kullanıcı limitini belirle, owner ve danışman girişlerini üret, operasyonu tek panelden yönet.
           </p>
           <div className="mt-12 grid gap-3 text-sm text-blue-50">
             <div className="rounded-lg border border-white/10 bg-white/5 p-4">Platform Admin: mertcan@unitcrm.com / Mertcan123!</div>
