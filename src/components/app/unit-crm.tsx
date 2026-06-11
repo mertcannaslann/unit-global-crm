@@ -67,7 +67,7 @@ const navItems = [
 
 function navForUser(user: User) {
   if (user.role === "ADMIN") {
-    return navItems.filter((item) => ["/dashboard", "/ekip", "/ayarlar"].includes(item.href));
+    return navItems.filter((item) => ["/dashboard", "/ayarlar"].includes(item.href));
   }
   if (user.role === "CONSULTANT") {
     return navItems.filter((item) => !["/ekip", "/entegrasyonlar", "/ayarlar"].includes(item.href));
@@ -77,12 +77,18 @@ function navForUser(user: User) {
 
 const statusOptions = ["AKTIF", "PASIF", "OPSIYONLU", "SATILDI", "KIRALANDI"];
 const leadStages = ["YENI_LEAD", "ARANDI", "RANDEVU_ALINDI", "YER_GOSTERILDI", "TEKLIF_VERILDI", "KAPANDI", "KAYBEDILDI"] as const;
+const OFFICE_USER_LIMIT = 5;
+
+function officeUsers(users: User[]) {
+  return users.filter((item) => item.role !== "ADMIN");
+}
+
 function canSeeOffice(user: User) {
-  return user.role === "ADMIN" || user.role === "OFFICE_MANAGER";
+  return user.role === "OFFICE_MANAGER";
 }
 
 function canManageOffice(user: User) {
-  return user.role === "ADMIN" || user.role === "OFFICE_MANAGER";
+  return user.role === "OFFICE_MANAGER";
 }
 
 function canCreatePortfolio(user: User) {
@@ -212,7 +218,7 @@ function LoadingScreen() {
     <main className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex items-center gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm text-muted-foreground">
         <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-        Unit Global yükleniyor
+        CRM yükleniyor
       </div>
     </main>
   );
@@ -350,7 +356,7 @@ function RouteRenderer({ slug, user }: { slug: string[]; user: User }) {
   if (page === "ekip") return <TeamPage user={user} />;
   if (page === "dokumanlar") return <DocumentsPage user={user} />;
   if (page === "entegrasyonlar") return <IntegrationsPage />;
-  if (page === "ayarlar") return <SettingsPage />;
+  if (page === "ayarlar") return <SettingsPage user={user} />;
   return <Dashboard user={user} />;
 }
 
@@ -364,6 +370,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
   const [ownerName, setOwnerName] = useState("Dorukhan Öründü");
   const [ownerEmail, setOwnerEmail] = useState("dorukhan@unitglobal.com");
   const [consultantCount, setConsultantCount] = useState(1);
+  const officeMemberList = officeUsers(data.users);
   const [generatedAccounts, setGeneratedAccounts] = useState([
     { role: "Ofis Sahibi", name: "Dorukhan Öründü", email: "dorukhan@unitglobal.com", password: "Owner123!" },
     { role: "Danışman", name: "Kaan Öründü", email: "kaan@unitglobal.com", password: "Consultant123!" },
@@ -374,7 +381,8 @@ function PlatformAdminDashboard({ user }: { user: User }) {
       name: "Unit Global",
       owner: data.users.find((item) => item.role === "OFFICE_MANAGER")?.name ?? "Dorukhan Öründü",
       status: "Hazır",
-      users: data.users.filter((item) => item.role !== "ADMIN").length,
+      users: officeMemberList.length,
+      userLimit: OFFICE_USER_LIMIT,
       properties: data.properties.length,
       leads: data.leads.length,
     },
@@ -382,7 +390,8 @@ function PlatformAdminDashboard({ user }: { user: User }) {
   const slug = officeName.toLocaleLowerCase("tr").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c").replace(/[^a-z0-9]+/g, "").slice(0, 18) || "ofis";
 
   function generateOfficeAccounts() {
-    const count = Math.max(1, Math.min(25, consultantCount));
+    const maxConsultants = OFFICE_USER_LIMIT - 1;
+    const count = Math.max(1, Math.min(maxConsultants, consultantCount));
     const accounts = [
       {
         role: "Ofis Sahibi",
@@ -398,7 +407,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
       })),
     ];
     setGeneratedAccounts(accounts);
-    toast.success(`${officeName} için ${accounts.length} kullanıcı girişi hazırlandı`);
+    toast.success(`${officeName} için ${accounts.length}/${OFFICE_USER_LIMIT} kullanıcı girişi hazırlandı`);
   }
 
   return (
@@ -408,7 +417,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
           <div>
             <p className="text-sm text-muted-foreground">Platform Admin</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-950">Hoş geldin, {user.name}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Emlak ofisine üyelik aç, kaç danışman kullanacağını belirle, kullanıcı adı ve şifreleri üretip müşteriye ilet.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Emlak ofisine üyelik aç, owner ve en fazla 4 danışman olmak üzere toplam 5 kullanıcıya kadar giriş üretip müşteriye ilet.</p>
           </div>
           <Button onClick={generateOfficeAccounts}>
             <Plus className="h-4 w-4" />
@@ -419,7 +428,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Metric label="Aktif ofis" value={offices.length.toString()} detail="Sisteme dahil edilen ofis" />
-        <Metric label="Ofis kullanıcıları" value={data.users.filter((item) => item.role !== "ADMIN").length.toString()} detail="Owner + danışman" />
+        <Metric label="Ofis kullanıcıları" value={`${officeMemberList.length}/${OFFICE_USER_LIMIT}`} detail="Owner + danışman limiti" />
         <Metric label="Toplam müşteri" value={data.leads.length.toString()} detail="Platform genelinde" />
         <Metric label="Toplam portföy" value={data.properties.length.toString()} detail="Ofislerden gelen kayıt" />
         <Metric label="Online işlem" value={data.activityLogs.length.toString()} detail="Son operasyon kayıtları" />
@@ -432,7 +441,16 @@ function PlatformAdminDashboard({ user }: { user: User }) {
             <Field label="Ofis adı"><Input value={officeName} onChange={(event) => setOfficeName(event.target.value)} /></Field>
             <Field label="Ofis sahibi"><Input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} /></Field>
             <Field label="Owner e-posta"><Input value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} /></Field>
-            <Field label="Danışman sayısı"><Input type="number" min={1} max={25} value={consultantCount} onChange={(event) => setConsultantCount(Number(event.target.value))} /></Field>
+            <Field label="Danışman sayısı">
+              <Input
+                type="number"
+                min={1}
+                max={OFFICE_USER_LIMIT - 1}
+                value={consultantCount}
+                onChange={(event) => setConsultantCount(Math.max(1, Math.min(OFFICE_USER_LIMIT - 1, Number(event.target.value))))}
+              />
+            </Field>
+            <p className="text-xs leading-5 text-muted-foreground">Paket limiti owner dahil toplam {OFFICE_USER_LIMIT} kullanıcıdır. Kaan ilk danışman olarak pakete dahildir.</p>
             <Button className="w-full" onClick={generateOfficeAccounts}>
               <Plus className="h-4 w-4" />
               Kullanıcı Girişlerini Üret
@@ -487,7 +505,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
                   <tr key={office.id} className="bg-white hover:bg-slate-50">
                     <td className="px-5 py-4 font-medium">{office.name}</td>
                     <td className="px-5 py-4">{office.owner}</td>
-                    <td className="px-5 py-4">{office.users}</td>
+                    <td className="px-5 py-4">{office.users}/{office.userLimit}</td>
                     <td className="px-5 py-4">{office.properties}</td>
                     <td className="px-5 py-4">{office.leads}</td>
                     <td className="px-5 py-4"><Badge label={office.status} /></td>
@@ -1958,10 +1976,12 @@ function MarketAnalysisPage({ user }: { user: User }) {
 
 function TeamPage({ user }: { user: User }) {
   const { data } = useCrm();
+  if (user.role === "ADMIN") return <PlatformAdminDashboard user={user} />;
   if (!canSeeOffice(user)) return <AccessDenied />;
+  const members = officeUsers(data.users);
   return (
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      {data.users.map((member) => {
+      {members.map((member) => {
         const activePortfolio = data.properties.filter((item) => item.consultantId === member.id && item.status === "AKTIF").length;
         const openTasks = data.tasks.filter((item) => item.assignedToId === member.id && item.status !== "TAMAMLANDI").length;
         const closedDeals = data.leads.filter((item) => item.consultantId === member.id && item.status === "KAPANDI").length + data.properties.filter((item) => item.consultantId === member.id && ["SATILDI", "KIRALANDI"].includes(item.status)).length;
@@ -1983,7 +2003,7 @@ function TeamPage({ user }: { user: User }) {
               <InfoBox label="Kapanan" value={closedDeals.toString()} />
             </div>
             <div className="mt-5 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">
-              {member.role === "ADMIN" ? "Ofis üyelikleri, kullanıcı sayısı ve kurulum yönetimi." : member.role === "OFFICE_MANAGER" ? "Ofis sahibi olarak tüm ekip, görev ve operasyon kontrolü." : "Atanmış müşteri, portföy ve görev takibi."}
+              {member.role === "OFFICE_MANAGER" ? "Ofis sahibi olarak tüm ekip, görev ve operasyon kontrolü." : "Atanmış müşteri, portföy ve görev takibi."}
             </div>
           </Card>
         );
@@ -2072,14 +2092,15 @@ function IntegrationsPage() {
   );
 }
 
-function SettingsPage() {
+function SettingsPage({ user }: { user: User }) {
   const { data } = useCrm();
+  const isPlatform = user.role === "ADMIN";
   return (
     <div className="grid gap-5 xl:grid-cols-2">
       <Card className="p-5">
-        <SectionTitle title="Ofis Ayarları" />
+        <SectionTitle title={isPlatform ? "Platform Ayarları" : "Ofis Ayarları"} />
         <div className="space-y-4">
-          <Field label="Şirket adı"><Input defaultValue={data.setting.companyName} /></Field>
+          <Field label="Şirket adı"><Input defaultValue={isPlatform ? "Emlak Ofisi CRM" : data.setting.companyName} /></Field>
           <Field label="Varsayılan para birimi"><Select defaultValue={data.setting.defaultCurrency}><option>TRY</option><option>USD</option><option>EUR</option></Select></Field>
           <Field label="Lead SLA saati"><Input type="number" defaultValue={data.setting.leadSlaHours} /></Field>
           <Field label="Bildirim e-postası"><Input defaultValue={data.setting.notificationEmail} /></Field>
@@ -2089,9 +2110,19 @@ function SettingsPage() {
       <Card className="p-5">
         <SectionTitle title="Yetki Modeli" />
         <div className="space-y-3 text-sm">
-          <InfoRow label="Admin" value="Tüm veri ve ayarlar" />
-          <InfoRow label="Ofis Sahibi" value="Tüm ekip, görev ve operasyon" />
-          <InfoRow label="Danışman" value="Kendisine atanan kayıtlar" />
+          {isPlatform ? (
+            <>
+              <InfoRow label="Platform Admin" value="Müşteri ofisleri ve üyelik paketleri" />
+              <InfoRow label="Müşteri Ofisi" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar`} />
+              <InfoRow label="Unit Global" value="Bu CRM içindeki müşteri ofislerinden biri" />
+            </>
+          ) : (
+            <>
+              <InfoRow label="Ofis Sahibi" value="Kendi ofisinin ekip, görev ve operasyon takibi" />
+              <InfoRow label="Danışman" value="Portföy girişi, müşteri takibi ve atanmış görevler" />
+              <InfoRow label="Kullanıcı limiti" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar`} />
+            </>
+          )}
         </div>
         <p className="mt-5 rounded-md border border-border bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">Entegrasyon durumları ayrı Entegrasyonlar ekranında yönetilir. Sistem scraping veya bypass mantığı içermez.</p>
       </Card>
