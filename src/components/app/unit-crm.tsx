@@ -756,11 +756,11 @@ function PropertiesPage({ user }: { user: User }) {
   return (
     <div className="space-y-5">
       <Toolbar>
-        <div className="relative min-w-0 flex-1">
+        <div className="relative w-full md:min-w-[300px] md:flex-[1_1_340px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-9" placeholder="Portföy, lokasyon veya proje ara" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
-        <Select className="w-full md:w-48" value={status} onChange={(event) => setStatus(event.target.value)}>
+        <Select className="w-full md:w-44" value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="TUMU">Durum: Tümü</option>
           {statusOptions.map((item) => (
             <option key={item} value={item}>
@@ -768,16 +768,16 @@ function PropertiesPage({ user }: { user: User }) {
             </option>
           ))}
         </Select>
-        <Select className="w-full md:w-48" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+        <Select className="w-full md:w-40" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
           <option value="TUMU">Tip: Tümü</option>
           <option value="SATILIK">Satılık</option>
           <option value="KIRALIK">Kiralık</option>
         </Select>
-        <Select className="w-full md:w-56" value={consultantFilter} onChange={(event) => setConsultantFilter(event.target.value)}>
+        <Select className="w-full md:w-52" value={consultantFilter} onChange={(event) => setConsultantFilter(event.target.value)}>
           <option value="TUMU">Danışman: Tümü</option>
           {consultants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </Select>
-        <Select className="w-full md:w-56" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
+        <Select className="w-full md:w-52" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
           <option value="TUMU">Lokasyon: Tümü</option>
           {locations.map((item) => <option key={item} value={item}>{item}</option>)}
         </Select>
@@ -806,7 +806,7 @@ function PropertiesPage({ user }: { user: User }) {
             </Link>
           </>
         ) : (
-          <div className="rounded-md border border-blue-100 bg-[#f7fbff] px-3 py-2 text-sm text-muted-foreground">
+          <div className="w-full rounded-md border border-blue-100 bg-[#f7fbff] px-3 py-2 text-sm text-muted-foreground md:flex-[1_1_280px]">
             Portföy girişi danışman ekranından yapılır; bu ekran ofis takibi içindir.
           </div>
         )}
@@ -907,7 +907,7 @@ function PropertyMini({ property }: { property: Property }) {
 }
 
 function Toolbar({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-3 md:flex-row md:items-center">{children}</div>;
+  return <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-3 md:flex-row md:flex-wrap md:items-center">{children}</div>;
 }
 
 function PropertyDetail({ user, propertyId }: { user: User; propertyId: string }) {
@@ -1733,11 +1733,6 @@ function CalendarPage({ user }: { user: User }) {
             <Button className="w-full" onClick={() => { addTask({ title, description: "Takvimden oluşturuldu.", type: "RANDEVU", dueDate: new Date(2026, 5, selectedDay, 10).toISOString(), priority: "ORTA", assignedToId, createdById: user.id }); setTitle(""); }}>Takvime Ekle</Button>
           </div>
         </Card>
-        <Card className="p-5">
-          <SectionTitle title="Google Takvim" action={<Badge label="Hazır" />} />
-          <p className="text-sm leading-6 text-muted-foreground">Google Takvim bağlantısı için yapı hazır. Bağlandığında müşteri randevuları ve ekip aksiyonları çift yönlü senkronize edilebilir.</p>
-          <Button className="mt-4 w-full" variant="outline" onClick={() => toast.success("Google Takvim bağlantısı sonraki faz için hazırlandı.")}>Google Takvim Bağla</Button>
-        </Card>
       </div>
     </div>
   );
@@ -1769,98 +1764,59 @@ function findMarketListings(listings: MarketListing[], query: string) {
   });
   if (relaxed.length) return relaxed;
 
-  return createFallbackMarketListings(query);
-}
-
-function createFallbackMarketListings(query: string): MarketListing[] {
-  const label = query.trim() || "Seçili lokasyon";
-  const location = label.split(",")[0]?.trim() || label;
-  const seed = Array.from(normalizeMarketText(label)).reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const baseRent = 76000 + (seed % 48) * 1800;
-  const baseSale = 28500000 + (seed % 55) * 650000;
-  const street = location.includes(" ") ? location : `${location} çevresi`;
-
-  return [
-    {
-      id: `market-generated-hepsiemlak-${seed}-1`,
-      source: "Hepsiemlak",
-      title: `${location} çevresinde premium 2+1 kiralık daire`,
-      url: `https://www.hepsiemlak.com/arama?q=${encodeURIComponent(label)}`,
-      city: "İstanbul",
-      district: "İstanbul",
-      neighborhood: location,
-      street,
-      listingType: "KIRALIK",
-      price: baseRent,
-      currency: "TRY",
-      squareMeters: 92,
-      rooms: "2+1",
-      status: "AKTIF",
-      listedAt: new Date(2026, 5, 9).toISOString(),
-    },
-    {
-      id: `market-generated-emlakjet-${seed}-1`,
-      source: "Emlakjet",
-      title: `${location} lokasyonunda eşyalı rezidans 1+1`,
-      url: `https://www.emlakjet.com/arama/?q=${encodeURIComponent(label)}`,
-      city: "İstanbul",
-      district: "İstanbul",
-      neighborhood: location,
-      street,
-      listingType: "KIRALIK",
-      price: Math.round(baseRent * 0.82),
-      currency: "TRY",
-      squareMeters: 68,
-      rooms: "1+1",
-      status: "AKTIF",
-      listedAt: new Date(2026, 5, 9).toISOString(),
-    },
-    {
-      id: `market-generated-hepsiemlak-${seed}-2`,
-      source: "Hepsiemlak",
-      title: `${location} yakınında satılık lüks aile dairesi`,
-      url: `https://www.hepsiemlak.com/arama?q=${encodeURIComponent(`${label} satılık`)}`,
-      city: "İstanbul",
-      district: "İstanbul",
-      neighborhood: location,
-      street,
-      listingType: "SATILIK",
-      price: baseSale,
-      currency: "TRY",
-      squareMeters: 145,
-      rooms: "3+1",
-      status: "AKTIF",
-      listedAt: new Date(2026, 5, 9).toISOString(),
-    },
-    {
-      id: `market-generated-emlakjet-${seed}-2`,
-      source: "Emlakjet",
-      title: `${location} çevresi yeni bina satılık 2+1`,
-      url: `https://www.emlakjet.com/arama/?q=${encodeURIComponent(`${label} satılık`)}`,
-      city: "İstanbul",
-      district: "İstanbul",
-      neighborhood: location,
-      street,
-      listingType: "SATILIK",
-      price: Math.round(baseSale * 0.78),
-      currency: "TRY",
-      squareMeters: 118,
-      rooms: "2+1",
-      status: "AKTIF",
-      listedAt: new Date(2026, 5, 9).toISOString(),
-    },
-  ];
+  return [];
 }
 
 function MarketAnalysisPage({ user }: { user: User }) {
   const { data } = useCrm();
-  const [mapQuery, setMapQuery] = useState("Etiler Nispetiye Caddesi");
+  const [mapQuery, setMapQuery] = useState("");
   const [listingMode, setListingMode] = useState<"KIRALIK" | "SATILIK" | "TUMU">("KIRALIK");
-  const marketListings = data.marketListings ?? [];
-  const locationListings = findMarketListings(marketListings, mapQuery);
+  const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoStatus, setGeoStatus] = useState("Konum izni bekleniyor");
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoStatus("Bu tarayıcı konum iznini desteklemiyor.");
+      return;
+    }
+    setGeoStatus("Konum izni isteniyor...");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeoCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setGeoStatus("Konum çevresi gösteriliyor.");
+      },
+      () => setGeoStatus("Konum izni verilmedi. Harita İstanbul genelinde açılır."),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  };
+  useEffect(() => {
+    requestLocation();
+  }, []);
+  const ownPropertyListings = data.properties.flatMap((property): MarketListing[] => {
+    const source = marketSources.find((item) => normalizeMarketText(property.sourcePlatform ?? "").includes(normalizeMarketText(item)));
+    if (!source) return [];
+    return [{
+      id: `owned-${property.id}`,
+      source,
+      title: property.title,
+      url: property.sourceUrl || property.listingUrl || "#",
+      city: property.city,
+      district: property.district,
+      neighborhood: property.neighborhood,
+      street: property.projectName || property.neighborhood,
+      listingType: property.listingType,
+      price: property.price,
+      currency: property.currency,
+      squareMeters: property.squareMeters,
+      rooms: property.rooms,
+      status: property.status === "AKTIF" ? "AKTIF" : "PASIF",
+      listedAt: property.syncedAt ?? property.createdAt,
+    }];
+  });
+  const marketListings = [...(data.marketListings ?? []), ...ownPropertyListings];
+  const trimmedQuery = mapQuery.trim();
+  const locationListings = trimmedQuery ? findMarketListings(marketListings, trimmedQuery) : [];
   const modeListings = locationListings.filter((item) => listingMode === "TUMU" || item.listingType === listingMode);
-  const activeListings = modeListings.length ? modeListings : createFallbackMarketListings(mapQuery).filter((item) => listingMode === "TUMU" || item.listingType === listingMode);
-  const usedFallback = activeListings.some((item) => item.id.startsWith("market-generated"));
+  const activeListings = modeListings;
   const averagePrice = activeListings.length ? Math.round(activeListings.reduce((sum, item) => sum + item.price, 0) / activeListings.length) : 0;
   const averageSqmPrice = activeListings.length ? Math.round(activeListings.reduce((sum, item) => sum + item.price / item.squareMeters, 0) / activeListings.length) : 0;
   const minPrice = activeListings.length ? Math.min(...activeListings.map((item) => item.price)) : 0;
@@ -1874,35 +1830,38 @@ function MarketAnalysisPage({ user }: { user: User }) {
       adet: rows.length,
     };
   });
-  const mapSearch = mapQuery.trim() ? `${mapQuery.trim()} İstanbul` : "İstanbul lüks konut";
+  const mapSearch = trimmedQuery ? `${trimmedQuery} İstanbul` : geoCoords ? `${geoCoords.lat},${geoCoords.lng}` : "İstanbul";
+  const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(mapSearch)}&z=${geoCoords && !trimmedQuery ? 15 : 12}&output=embed`;
 
   return (
     <div className="space-y-5">
       <Toolbar>
-        <Input value={mapQuery} onChange={(event) => setMapQuery(event.target.value)} placeholder="Semt, sokak veya cadde: Etiler Nispetiye Caddesi" />
+        <Input className="w-full md:min-w-[320px] md:flex-[1_1_420px]" value={mapQuery} onChange={(event) => setMapQuery(event.target.value)} placeholder="Semt, sokak veya cadde gir" />
         <Select className="w-full md:w-44" value={listingMode} onChange={(event) => setListingMode(event.target.value as "KIRALIK" | "SATILIK" | "TUMU")}>
           <option value="KIRALIK">Kiralık</option>
           <option value="SATILIK">Satılık</option>
           <option value="TUMU">Tümü</option>
         </Select>
+        <Button variant="outline" onClick={requestLocation}>
+          <MapPin className="h-4 w-4" />
+          Konum İzni İste
+        </Button>
         <Button
           variant="outline"
           onClick={() => window.open(`https://www.google.com/maps/search/${encodeURIComponent(mapSearch)}`, "_blank", "noopener,noreferrer")}
         >
           <MapPin className="h-4 w-4" />
-          Google Maps ile Aç
+          Maps ile Aç
         </Button>
       </Toolbar>
-      {usedFallback ? (
-        <Card className="border-blue-100 bg-[#f7fbff] px-5 py-3 text-sm text-muted-foreground">
-          Bu adres demo havuzda birebir bulunmadı; sistem seçilen İstanbul lokasyonu için Hepsiemlak ve Emlakjet arama bağlantılarıyla API-ready emsal seti oluşturdu.
-        </Card>
-      ) : null}
+      <Card className="border-blue-100 bg-[#f7fbff] px-5 py-3 text-sm text-muted-foreground">
+        Piyasa analizi API anahtarları girilip izinli ilan verileri çekildiğinde kendi portföylerinize göre çalışır. Şu an sistem sonuç uydurmaz; kayıt yoksa değerler 0 kalır.
+      </Card>
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Ortalama fiyat" value={averagePrice ? money(averagePrice) : "-"} detail="Semt / sokak bazlı" />
-        <Metric label="Minimum" value={minPrice ? money(minPrice) : "-"} detail="En düşük aktif kayıt" />
-        <Metric label="Maksimum" value={maxPrice ? money(maxPrice) : "-"} detail="En yüksek aktif kayıt" />
-        <Metric label="m² Fiyatı" value={averageSqmPrice ? money(averageSqmPrice) : "-"} detail={`${activeListings.length} platform kaydı`} />
+        <Metric label="Ortalama fiyat" value={money(averagePrice)} detail="Kendi ilan verisi" />
+        <Metric label="Minimum" value={money(minPrice)} detail="En düşük aktif kayıt" />
+        <Metric label="Maksimum" value={money(maxPrice)} detail="En yüksek aktif kayıt" />
+        <Metric label="m² Fiyatı" value={money(averageSqmPrice)} detail={`${activeListings.length} platform kaydı`} />
       </div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className="p-5">
@@ -1936,19 +1895,12 @@ function MarketAnalysisPage({ user }: { user: User }) {
       </div>
       <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
         <Card className="overflow-hidden">
-          <div className="flex h-80 items-center justify-center bg-[#e8f3ff]">
-            <div className="text-center">
-              <p className="text-sm font-semibold text-primary">Harita Araştırma Alanı</p>
-              <p className="mt-2 text-sm text-muted-foreground">{mapSearch}</p>
+          <div className="relative h-80 bg-[#e8f3ff]">
+            <iframe title="Google Maps konum önizleme" src={mapEmbedUrl} className="h-full w-full border-0" loading="lazy" />
+            <div className="absolute left-4 top-4 max-w-xs rounded-md border border-blue-100 bg-white/95 p-3 text-sm shadow-sm shadow-blue-950/10">
+              <p className="font-semibold text-slate-950">Harita önizleme</p>
+              <p className="mt-1 text-xs text-muted-foreground">{geoStatus}</p>
               <p className="mt-1 text-xs text-muted-foreground">Araştırmayı yapan: {user.name}</p>
-              <a
-                className="mt-4 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-white"
-                href={`https://www.google.com/maps/search/${encodeURIComponent(mapSearch)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Google Maps ile Aç
-              </a>
             </div>
           </div>
         </Card>
@@ -1967,7 +1919,7 @@ function MarketAnalysisPage({ user }: { user: User }) {
               <p className="shrink-0 text-sm font-semibold text-primary">{money(item.price, item.currency)}</p>
             </div>
           ))}
-          {!activeListings.length ? <EmptyState title="Bölgede kayıt yok" description="Başka bir semt, cadde veya sokak adı deneyin. Demo havuzunda Etiler, Bebek, Nişantaşı ve Levent var." /> : null}
+          {!activeListings.length ? <EmptyState title="Henüz analiz kaydı yok" description="Entegrasyonlarda API bilgileri girilip ilan verileri çekildiğinde bu bölüm kendi portföylerinize göre dolacak." /> : null}
         </Card>
       </div>
     </div>
@@ -2056,36 +2008,168 @@ function DocumentsPage({ user }: { user: User }) {
   );
 }
 
+type IntegrationField = {
+  id: string;
+  label: string;
+  placeholder: string;
+  secret?: boolean;
+};
+
+type IntegrationFormConfig = {
+  key: string;
+  name: string;
+  status: string;
+  scope: string;
+  fields: IntegrationField[];
+};
+
+const integrationFormConfigs: IntegrationFormConfig[] = [
+  {
+    key: "sahibinden",
+    name: "Sahibinden",
+    status: "Başvuru bekleniyor / Demo mod aktif",
+    scope: "Sadece kendi kurumsal mağaza ve yetkili portföy ilanları",
+    fields: [
+      { id: "applicationNo", label: "API başvuru no", placeholder: "Örn: SB-2026-0001" },
+      { id: "storeUrl", label: "Kurumsal mağaza linki", placeholder: "https://unitglobal.sahibinden.com/" },
+      { id: "clientId", label: "Client ID", placeholder: "Sahibinden tarafından verilecek" },
+      { id: "clientSecret", label: "Client secret / token", placeholder: "Güvenli erişim anahtarı", secret: true },
+      { id: "authorizedEmail", label: "Yetkili e-posta", placeholder: "owner@firma.com" },
+    ],
+  },
+  {
+    key: "emlakjet",
+    name: "Emlakjet",
+    status: "API-ready başvuru formu",
+    scope: "İzinli portföy ve lokasyon bazlı emsal verisi",
+    fields: [
+      { id: "companyId", label: "Firma / bayi ID", placeholder: "Emlakjet firma ID" },
+      { id: "apiKey", label: "API key", placeholder: "Emlakjet API anahtarı", secret: true },
+      { id: "webhookUrl", label: "Webhook URL", placeholder: "https://crm.farikaistanbul.com/api/webhooks/emlakjet" },
+      { id: "authorizedEmail", label: "Yetkili e-posta", placeholder: "owner@firma.com" },
+    ],
+  },
+  {
+    key: "hepsiemlak",
+    name: "Hepsiemlak",
+    status: "API-ready başvuru formu",
+    scope: "İzinli portföy ve lokasyon bazlı emsal verisi",
+    fields: [
+      { id: "officeCode", label: "Ofis kodu", placeholder: "Hepsiemlak ofis kodu" },
+      { id: "apiKey", label: "API key", placeholder: "Hepsiemlak API anahtarı", secret: true },
+      { id: "webhookUrl", label: "Webhook URL", placeholder: "https://crm.farikaistanbul.com/api/webhooks/hepsiemlak" },
+      { id: "authorizedEmail", label: "Yetkili e-posta", placeholder: "owner@firma.com" },
+    ],
+  },
+  {
+    key: "googleDrive",
+    name: "Google Drive",
+    status: "Doküman klasörü bağlantısı",
+    scope: "Tapu, yetki belgesi, sözleşme ve müşteri dosyaları",
+    fields: [
+      { id: "clientId", label: "Google OAuth Client ID", placeholder: "Google Cloud OAuth Client ID" },
+      { id: "apiKey", label: "Google API key", placeholder: "Google Drive API anahtarı", secret: true },
+      { id: "folderId", label: "Ana Drive klasör ID", placeholder: "Drive klasör linkindeki ID" },
+      { id: "ownerEmail", label: "Yetkili Google e-postası", placeholder: "owner@gmail.com" },
+    ],
+  },
+  {
+    key: "googleCalendar",
+    name: "Google Takvim",
+    status: "Randevu senkronizasyonu",
+    scope: "Takvim, randevu, yer gösterimi ve takip görevleri",
+    fields: [
+      { id: "calendarId", label: "Calendar ID", placeholder: "primary veya takvim ID" },
+      { id: "clientId", label: "Google OAuth Client ID", placeholder: "Google Cloud OAuth Client ID" },
+      { id: "clientSecret", label: "Client secret", placeholder: "Google OAuth secret", secret: true },
+      { id: "ownerEmail", label: "Yetkili Google e-postası", placeholder: "owner@gmail.com" },
+    ],
+  },
+];
+
 function IntegrationsPage() {
   const { data } = useCrm();
-  const integrations = [
-    { name: "Sahibinden", status: "Başvuru bekleniyor / Demo mod aktif", scope: "Kendi kurumsal mağaza ve yetkili portföy", live: "Kapalı" },
-    { name: "Emlakjet", status: "API-ready demo", scope: "Lokasyon bazlı emsal demo verisi", live: "Kapalı" },
-    { name: "Hepsiemlak", status: "API-ready demo", scope: "Lokasyon bazlı emsal demo verisi", live: "Kapalı" },
-    { name: "Google Takvim", status: "Bağlantıya hazır", scope: "Randevu ve yer gösterimi senkronizasyonu", live: "Demo" },
-  ];
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("unit-crm-integration-drafts");
+      if (saved) setDrafts(JSON.parse(saved));
+    } catch {
+      window.localStorage.removeItem("unit-crm-integration-drafts");
+    }
+  }, []);
+  const updateDraft = (integrationKey: string, fieldId: string, value: string) => {
+    setDrafts((current) => ({
+      ...current,
+      [integrationKey]: {
+        ...(current[integrationKey] ?? {}),
+        [fieldId]: value,
+      },
+    }));
+  };
+  const saveIntegration = (integrationKey: string, integrationName: string) => {
+    const next = { ...drafts };
+    window.localStorage.setItem("unit-crm-integration-drafts", JSON.stringify(next));
+    toast.success(`${integrationName} erişim bilgileri kaydedildi`);
+  };
+  const hasAnyValue = (integrationKey: string) => Object.values(drafts[integrationKey] ?? {}).some((value) => value.trim().length > 0);
+  const testGoogleDrive = () => {
+    const drive = drafts.googleDrive ?? {};
+    if (!drive.clientId && !drive.folderId && !drive.ownerEmail) {
+      toast.error("Google Drive için Client ID, klasör ID veya yetkili e-posta girin.");
+      return;
+    }
+    toast.success("Google Drive bağlantı bilgileri hazır. Doküman klasörü entegrasyona bağlanabilir.");
+  };
+
   return (
-    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-      {integrations.map((item) => (
-        <Card key={item.name} className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-semibold text-slate-950">{item.name}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{item.status}</p>
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-2">
+        {integrationFormConfigs.map((integration) => (
+          <Card key={integration.key} className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-950">{integration.name}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{integration.status}</p>
+              </div>
+              <Badge label={hasAnyValue(integration.key) ? "Hazır" : "Form"} />
             </div>
-            <Badge label="Demo" />
-          </div>
-          <div className="mt-5 space-y-3 text-sm">
-            <InfoRow label="Veri kapsamı" value={item.scope} />
-            <InfoRow label="Canlı çekim" value={item.live} />
-            <InfoRow label="Scraping" value="Yok" />
-          </div>
-        </Card>
-      ))}
-      <Card className="p-5 md:col-span-2 xl:col-span-4">
+            <div className="mt-5 space-y-3 text-sm">
+              <InfoRow label="Veri kapsamı" value={integration.scope} />
+              <InfoRow label="Canlı çekim" value="API bilgisi girilince" />
+              <InfoRow label="Scraping" value="Yok" />
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {integration.fields.map((field) => (
+                <Field key={field.id} label={field.label}>
+                  <Input
+                    type={field.secret ? "password" : "text"}
+                    value={drafts[integration.key]?.[field.id] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) => updateDraft(integration.key, field.id, event.target.value)}
+                  />
+                </Field>
+              ))}
+            </div>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <Button onClick={() => saveIntegration(integration.key, integration.name)}>Bilgileri Kaydet</Button>
+              {integration.key === "googleDrive" ? (
+                <>
+                  <Button variant="outline" onClick={testGoogleDrive}>Bağlantıyı Test Et</Button>
+                  <Button variant="outline" onClick={() => window.open("https://drive.google.com/drive/my-drive", "_blank", "noopener,noreferrer")}>
+                    <FolderOpen className="h-4 w-4" />
+                    Drive Aç
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </Card>
+        ))}
+      </div>
+      <Card className="p-5">
         <SectionTitle title="Uyum Notu" />
         <p className="text-sm leading-6 text-muted-foreground">
-          Sahibinden, Emlakjet ve Hepsiemlak için canlı scraping, captcha/proxy bypass veya izinsiz genel ilan çekimi yoktur. Yapı yalnızca izinli API entegrasyonuna hazır demo mantığıyla çalışır. Son Sahibinden demo senkronizasyonu: {data.setting.lastSahibindenSyncAt ? shortDate(data.setting.lastSahibindenSyncAt) : "Henüz yok"}.
+          Sahibinden, Emlakjet ve Hepsiemlak için canlı scraping, captcha/proxy bypass veya izinsiz genel ilan çekimi yoktur. Yapı yalnızca firma sahibinin girdiği izinli API erişimleriyle çalışacak şekilde hazırlanmıştır. Son Sahibinden demo senkronizasyonu: {data.setting.lastSahibindenSyncAt ? shortDate(data.setting.lastSahibindenSyncAt) : "Henüz yok"}.
         </p>
       </Card>
     </div>
@@ -2093,38 +2177,136 @@ function IntegrationsPage() {
 }
 
 function SettingsPage({ user }: { user: User }) {
-  const { data } = useCrm();
+  const { data, addUser, updateUser } = useCrm();
   const isPlatform = user.role === "ADMIN";
+  const members = officeUsers(data.users);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPhone, setNewUserPhone] = useState("");
+  const remainingSlots = Math.max(OFFICE_USER_LIMIT - members.length, 0);
+  const createUser = () => {
+    const email = newUserEmail.trim().toLowerCase();
+    const name = newUserName.trim();
+    if (!name || !email) {
+      toast.error("Kullanıcı adı ve e-posta zorunlu.");
+      return;
+    }
+    if (remainingSlots <= 0) {
+      toast.error(`${OFFICE_USER_LIMIT} kullanıcı limiti dolu.`);
+      return;
+    }
+    if (data.users.some((item) => item.email.toLowerCase() === email)) {
+      toast.error("Bu e-posta ile bir kullanıcı zaten var.");
+      return;
+    }
+    addUser({
+      name,
+      email,
+      phone: newUserPhone.trim() || "Telefon girilecek",
+      role: "CONSULTANT",
+      title: "Gayrimenkul Danışmanı",
+    });
+    setNewUserName("");
+    setNewUserEmail("");
+    setNewUserPhone("");
+  };
+
+  if (isPlatform) {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+        <Card className="p-5">
+          <SectionTitle title="Platform Ayarları" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <Metric label="Müşteri ofisi" value="1" detail="Unit Global aktif" />
+            <Metric label="Toplam kullanıcı" value={members.length.toString()} detail={`${OFFICE_USER_LIMIT} kullanıcı limitli ofis`} />
+            <Metric label="Aktif panel" value="3" detail="Admin, owner, danışman" />
+          </div>
+          <p className="mt-5 rounded-md border border-blue-100 bg-[#f7fbff] p-4 text-sm leading-6 text-muted-foreground">
+            Platform admin tarafı müşteri ofislerini, paketleri ve genel kullanım istatistiklerini yönetir. Unit Global ofis içi kullanıcıları Dorukhan Öründü tarafından kendi panelinden yönetilir.
+          </p>
+        </Card>
+        <Card className="p-5">
+          <SectionTitle title="Yetki Modeli" />
+          <div className="space-y-3 text-sm">
+            <InfoRow label="Platform Admin" value="Müşteri ofisleri ve üyelik paketleri" />
+            <InfoRow label="Ofis Sahibi" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar ekip yönetimi`} />
+            <InfoRow label="Danışman" value="Portföy girişi, müşteri takibi ve atanmış görevler" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
+    <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
       <Card className="p-5">
-        <SectionTitle title={isPlatform ? "Platform Ayarları" : "Ofis Ayarları"} />
+        <SectionTitle title="Ekibine Kullanıcı Ekle" action={<Badge label={`${members.length}/${OFFICE_USER_LIMIT}`} />} />
         <div className="space-y-4">
-          <Field label="Şirket adı"><Input defaultValue={isPlatform ? "Emlak Ofisi CRM" : data.setting.companyName} /></Field>
-          <Field label="Varsayılan para birimi"><Select defaultValue={data.setting.defaultCurrency}><option>TRY</option><option>USD</option><option>EUR</option></Select></Field>
-          <Field label="Lead SLA saati"><Input type="number" defaultValue={data.setting.leadSlaHours} /></Field>
-          <Field label="Bildirim e-postası"><Input defaultValue={data.setting.notificationEmail} /></Field>
-          <Button onClick={() => toast.success("Ayarlar kaydedildi")}>Ayarları Kaydet</Button>
+          <Field label="Ad soyad"><Input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Örn: Yeni Danışman" /></Field>
+          <Field label="E-posta"><Input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="danisman@unitglobal.com" /></Field>
+          <Field label="Telefon"><Input value={newUserPhone} onChange={(event) => setNewUserPhone(event.target.value)} placeholder="+90 5xx xxx xx xx" /></Field>
+          <Field label="Rol">
+            <Select value="CONSULTANT" disabled>
+              <option value="CONSULTANT">Danışman</option>
+            </Select>
+          </Field>
+          <Button className="w-full" onClick={createUser} disabled={remainingSlots <= 0}>
+            <Plus className="h-4 w-4" />
+            Kullanıcı Ekle
+          </Button>
+          <p className="rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
+            Owner dahil toplam {OFFICE_USER_LIMIT} kullanıcı hakkı var. Kalan hak: {remainingSlots}. Danışmanlar portföy, müşteri ve görev girişlerini kendi panelinden yapar.
+          </p>
         </div>
       </Card>
       <Card className="p-5">
-        <SectionTitle title="Yetki Modeli" />
-        <div className="space-y-3 text-sm">
-          {isPlatform ? (
-            <>
-              <InfoRow label="Platform Admin" value="Müşteri ofisleri ve üyelik paketleri" />
-              <InfoRow label="Müşteri Ofisi" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar`} />
-              <InfoRow label="Unit Global" value="Bu CRM içindeki müşteri ofislerinden biri" />
-            </>
-          ) : (
-            <>
-              <InfoRow label="Ofis Sahibi" value="Kendi ofisinin ekip, görev ve operasyon takibi" />
-              <InfoRow label="Danışman" value="Portföy girişi, müşteri takibi ve atanmış görevler" />
-              <InfoRow label="Kullanıcı limiti" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar`} />
-            </>
-          )}
+        <SectionTitle title="Ekip Kullanıcıları" />
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Kullanıcı</th>
+                <th className="px-4 py-3 font-semibold">Rol</th>
+                <th className="px-4 py-3 font-semibold">Telefon</th>
+                <th className="px-4 py-3 font-semibold">Durum</th>
+                <th className="px-4 py-3 font-semibold">İşlem</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-white">
+              {members.map((member) => (
+                <tr key={member.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar user={member} />
+                      <div>
+                        <p className="font-medium text-slate-950">{member.name}</p>
+                        <p className="text-xs text-muted-foreground">{member.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">{roleLabel(member.role)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{member.phone}</td>
+                  <td className="px-4 py-3"><Badge label={member.active ? "Aktif" : "Pasif"} /></td>
+                  <td className="px-4 py-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={member.role === "OFFICE_MANAGER"}
+                      onClick={() => updateUser(member.id, { active: !member.active })}
+                    >
+                      {member.active ? "Pasifleştir" : "Aktifleştir"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <p className="mt-5 rounded-md border border-border bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">Entegrasyon durumları ayrı Entegrasyonlar ekranında yönetilir. Sistem scraping veya bypass mantığı içermez.</p>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <InfoBox label="Kullanıcı limiti" value={`${members.length}/${OFFICE_USER_LIMIT}`} />
+          <InfoBox label="Aktif danışman" value={members.filter((member) => member.role === "CONSULTANT" && member.active).length.toString()} />
+          <InfoBox label="Kalan hak" value={remainingSlots.toString()} />
+        </div>
       </Card>
     </div>
   );
