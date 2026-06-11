@@ -23,6 +23,7 @@ type CrmContextValue = {
   syncSahibindenDemoListings: () => Promise<void>;
   updateUser: (id: string, patch: Partial<User>) => void;
   addUser: (user: Omit<User, "id" | "avatarColor" | "active">) => void;
+  deleteUser: (id: string, reassignedToId: string) => void;
 };
 
 const CrmContext = createContext<CrmContextValue | null>(null);
@@ -209,6 +210,30 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     addUser: (user) => {
       setData((current) => ({ ...current, users: [{ ...user, id: `user-${Date.now()}`, avatarColor: "bg-blue-900", active: true }, ...current.users] }));
       toast.success("Kullanıcı eklendi");
+    },
+    deleteUser: (id, reassignedToId) => {
+      setData((current) => {
+        const user = current.users.find((item) => item.id === id);
+        if (!user || user.role !== "CONSULTANT") {
+          toast.error("Sadece danışman kullanıcı silinebilir.");
+          return current;
+        }
+
+        return {
+          ...current,
+          users: current.users.filter((item) => item.id !== id),
+          properties: current.properties.map((item) => (item.consultantId === id ? { ...item, consultantId: reassignedToId } : item)),
+          leads: current.leads.map((item) => (item.consultantId === id ? { ...item, consultantId: reassignedToId } : item)),
+          tasks: current.tasks.map((item) => ({
+            ...item,
+            assignedToId: item.assignedToId === id ? reassignedToId : item.assignedToId,
+            createdById: item.createdById === id ? reassignedToId : item.createdById,
+          })),
+          documents: current.documents.map((item) => (item.assignedToId === id ? { ...item, assignedToId: reassignedToId } : item)),
+          notifications: current.notifications.filter((item) => item.targetUserId !== id),
+        };
+      });
+      toast.success("Danışman silindi; bağlı kayıtlar ofis sahibine devredildi");
     },
   }), [data]);
 
