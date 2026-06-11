@@ -1,0 +1,224 @@
+"use client";
+
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { initialData } from "@/lib/demo-data";
+import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
+import type { CrmData, Lead, LeadAction, MarketComparable, Notification, Property, Task, User } from "@/lib/types";
+
+type CrmContextValue = {
+  data: CrmData;
+  addProperty: (property: Omit<Property, "id" | "createdAt" | "coverImage" | "gallery" | "videoUrl" | "city" | "projectName" | "floor" | "buildingAge" | "furnished" | "description" | "features">) => string;
+  updateProperty: (id: string, patch: Partial<Property>) => void;
+  deleteProperty: (id: string) => void;
+  addLead: (lead: Omit<Lead, "id" | "createdAt" | "status" | "notes">) => void;
+  importLeads: (leads: Array<Omit<Lead, "id" | "createdAt" | "status" | "notes">>, sourceName?: string) => void;
+  addLeadAction: (leadId: string, userId: string, note: string) => void;
+  updateLead: (id: string, patch: Partial<Lead>) => void;
+  addTask: (task: Omit<Task, "id" | "status">) => void;
+  updateTask: (id: string, patch: Partial<Task>) => void;
+  addNotification: (notification: Omit<Notification, "id" | "createdAt" | "status">) => void;
+  markNotificationRead: (id: string) => void;
+  addComparable: (comparable: Omit<MarketComparable, "id" | "lastCheckedAt" | "status">) => void;
+  syncSahibindenDemoListings: () => Promise<void>;
+  updateUser: (id: string, patch: Partial<User>) => void;
+  addUser: (user: Omit<User, "id" | "avatarColor" | "active">) => void;
+};
+
+const CrmContext = createContext<CrmContextValue | null>(null);
+const STORAGE_KEY = "unit-global-crm-data-v7";
+
+export function CrmProvider({ children }: { children: React.ReactNode }) {
+  const [data, setData] = useState<CrmData>(initialData);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        setData(JSON.parse(saved));
+      }
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      toast.error("Yerel kayıt alanı dolu. Lütfen eski tarayıcı verisini temizleyin.");
+    }
+  }, [data]);
+
+  const value = useMemo<CrmContextValue>(() => ({
+    data,
+    addProperty: (property) => {
+      const id = `property-${Date.now()}`;
+      setData((current) => ({
+        ...current,
+        properties: [
+          {
+            ...property,
+            id,
+            city: "İstanbul",
+            projectName: "Unit Global Özel Portföy",
+            floor: "Ara kat",
+            buildingAge: "0-5 yıl",
+            furnished: false,
+            description: "Yeni eklenen premium portföy. Detaylar danışman tarafından güncellenecek.",
+            features: ["Otopark", "Güvenlik", "Teras"],
+            coverImage: "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=900&q=80",
+            gallery: [],
+            videoUrl: "",
+            listingUrl: property.listingUrl ?? "",
+            sourcePlatform: property.sourcePlatform ?? "Manual",
+            sourceUrl: property.sourceUrl ?? property.listingUrl ?? "",
+            externalId: property.externalId ?? undefined,
+            syncedAt: property.syncedAt ?? undefined,
+            syncStatus: property.syncStatus ?? "MANUAL",
+            sourceType: property.sourceType ?? "MANUAL",
+            createdAt: new Date().toISOString(),
+          },
+          ...current.properties,
+        ],
+      }));
+      toast.success("Portföy eklendi");
+      return id;
+    },
+    updateProperty: (id, patch) => {
+      setData((current) => ({
+        ...current,
+        properties: current.properties.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      }));
+      toast.success("Portföy güncellendi");
+    },
+    deleteProperty: (id) => {
+      setData((current) => ({
+        ...current,
+        properties: current.properties.filter((item) => item.id !== id),
+      }));
+      toast.success("Portföy silindi");
+    },
+    addLead: (lead) => {
+      setData((current) => ({
+        ...current,
+        leads: [
+          {
+            ...lead,
+            id: `lead-${Date.now()}`,
+            status: "YENI_LEAD",
+            notes: "Yeni lead. İlk temas bekleniyor.",
+            createdAt: new Date().toISOString(),
+          },
+          ...current.leads,
+        ],
+      }));
+      toast.success("Lead eklendi");
+    },
+    importLeads: (leads, sourceName) => {
+      const now = Date.now();
+      const cleanLeads = leads.filter((lead) => lead.name.trim() && lead.phone.trim());
+      if (!cleanLeads.length) {
+        toast.error("İçe aktarılacak müşteri bulunamadı");
+        return;
+      }
+      setData((current) => ({
+        ...current,
+        leads: [
+          ...cleanLeads.map((lead, index) => ({
+            ...lead,
+            id: `lead-import-${now}-${index}`,
+            status: "YENI_LEAD" as const,
+            notes: "Excel / CSV aktarımı ile eklendi. İlk temas bekleniyor.",
+            createdAt: new Date(now + index).toISOString(),
+          })),
+          ...current.leads,
+        ],
+      }));
+      toast.success(`${sourceName ?? "Dosya"} müşterilere yüklendi`);
+    },
+    addLeadAction: (leadId, userId, note) => {
+      const action: LeadAction = {
+        id: `lead-action-${Date.now()}`,
+        leadId,
+        userId,
+        action: "Not",
+        note,
+        createdAt: new Date().toISOString(),
+      };
+      setData((current) => ({ ...current, leadActions: [action, ...current.leadActions] }));
+      toast.success("Lead aksiyonu eklendi");
+    },
+    updateLead: (id, patch) => {
+      setData((current) => ({ ...current, leads: current.leads.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+      toast.success("Lead güncellendi");
+    },
+    addTask: (task) => {
+      setData((current) => ({ ...current, tasks: [{ ...task, id: `task-${Date.now()}`, status: "ACIK" }, ...current.tasks] }));
+      toast.success("Görev oluşturuldu");
+    },
+    updateTask: (id, patch) => {
+      setData((current) => ({ ...current, tasks: current.tasks.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+      toast.success("Görev güncellendi");
+    },
+    addNotification: (notification) => {
+      setData((current) => ({
+        ...current,
+        notifications: [{ ...notification, id: `notification-${Date.now()}`, status: "OKUNMADI", createdAt: new Date().toISOString() }, ...current.notifications],
+      }));
+      toast.success("Bildirim gönderildi");
+    },
+    markNotificationRead: (id) => {
+      setData((current) => ({ ...current, notifications: current.notifications.map((item) => (item.id === id ? { ...item, status: "OKUNDU" } : item)) }));
+    },
+    addComparable: (comparable) => {
+      setData((current) => ({
+        ...current,
+        comparables: [{ ...comparable, id: `comp-${Date.now()}`, status: "AKTIF", lastCheckedAt: new Date().toISOString() }, ...current.comparables],
+      }));
+      toast.success("Emsal kayıt eklendi");
+    },
+    syncSahibindenDemoListings: async () => {
+      const consultantId = data.users.find((item) => item.role === "CONSULTANT")?.id ?? data.users[0]?.id ?? "admin-1";
+      const result = await sahibindenDemoProvider.syncListings(data.properties, consultantId);
+      const existingUrls = new Set(data.properties.map((property) => property.sourceUrl || property.listingUrl).filter(Boolean));
+      const additions = result.added.filter((property) => !existingUrls.has(property.sourceUrl || property.listingUrl));
+
+      setData((current) => ({
+        ...current,
+        properties: [
+          ...additions.filter((property) => !current.properties.some((item) => (item.sourceUrl || item.listingUrl) === (property.sourceUrl || property.listingUrl))),
+          ...current.properties,
+        ],
+        setting: {
+          ...current.setting,
+          lastSahibindenSyncAt: result.syncedAt,
+        },
+      }));
+
+      if (additions.length) {
+        toast.success(`${additions.length} demo kaynak ilanı senkronize edildi`);
+      } else {
+        toast.success("Senkronize edilecek yeni ilan yok");
+      }
+    },
+    updateUser: (id, patch) => {
+      setData((current) => ({ ...current, users: current.users.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+      toast.success("Kullanıcı güncellendi");
+    },
+    addUser: (user) => {
+      setData((current) => ({ ...current, users: [{ ...user, id: `user-${Date.now()}`, avatarColor: "bg-blue-900", active: true }, ...current.users] }));
+      toast.success("Kullanıcı eklendi");
+    },
+  }), [data]);
+
+  return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
+}
+
+export function useCrm() {
+  const context = useContext(CrmContext);
+  if (!context) {
+    throw new Error("useCrm must be used within CrmProvider");
+  }
+  return context;
+}
