@@ -46,6 +46,7 @@ import { money, shortDate } from "@/lib/formatters";
 import { initials } from "@/lib/utils";
 import { leadSchema, propertySchema } from "@/lib/validators";
 import { useCrm } from "@/store/crm-store";
+import type { ListingPreview } from "@/services/listing-providers/listing-preview";
 import type { Lead, MarketListing, Property, User } from "@/lib/types";
 
 type CrmAppProps = {
@@ -294,7 +295,8 @@ function Avatar({ user }: { user: User }) {
 }
 
 function PageHeader({ slug, user }: { slug: string[]; user: User }) {
-  const { data } = useCrm();
+  const { data, markNotificationRead } = useCrm();
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const titleMap: Record<string, string> = {
     dashboard: "Dashboard",
     portfoyler: "Portföyler",
@@ -309,7 +311,10 @@ function PageHeader({ slug, user }: { slug: string[]; user: User }) {
   };
 
   const title = titleMap[slug[0]] ?? "Dashboard";
-  const unreadCount = data.notifications.filter((item) => item.status === "OKUNMADI" && (!item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id)).length;
+  const visibleNotifications = data.notifications
+    .filter((item) => !item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const unreadCount = visibleNotifications.filter((item) => item.status === "OKUNMADI").length;
 
   return (
     <header className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -319,20 +324,56 @@ function PageHeader({ slug, user }: { slug: string[]; user: User }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="rounded-md border border-border bg-white px-3 py-2 text-sm text-muted-foreground">Bugün: 11 Haziran 2026</div>
-        <Button
-          className="relative bg-white text-slate-700 hover:bg-[#f3f8ff] hover:text-primary"
-          variant="outline"
-          onClick={() => toast.info(unreadCount ? `${unreadCount} okunmamış bildirim var.` : "Yeni bildirim yok.")}
-          aria-label="Bildirimler"
-        >
-          <Bell className="h-4 w-4" />
-          Bildirimler
-          {unreadCount ? (
-            <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
-              {unreadCount}
-            </span>
+        <div className="relative">
+          <Button
+            className="relative bg-white text-slate-700 hover:bg-[#f3f8ff] hover:text-primary"
+            variant="outline"
+            onClick={() => setNotificationOpen((open) => !open)}
+            aria-label="Bildirimler"
+          >
+            <Bell className="h-4 w-4" />
+            Bildirimler
+            {unreadCount ? (
+              <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
+                {unreadCount}
+              </span>
+            ) : null}
+          </Button>
+          {notificationOpen ? (
+            <Card className="absolute right-0 top-12 z-50 w-[min(92vw,380px)] overflow-hidden shadow-xl shadow-blue-950/10">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Bildirimler</p>
+                  <p className="text-xs text-muted-foreground">{unreadCount ? `${unreadCount} okunmamış bildirim` : "Yeni bildirim yok"}</p>
+                </div>
+                <Button size="icon" variant="ghost" onClick={() => setNotificationOpen(false)} aria-label="Bildirimleri kapat">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {visibleNotifications.slice(0, 8).map((notification) => (
+                  <button
+                    key={notification.id}
+                    className="w-full border-b border-border px-4 py-3 text-left transition hover:bg-[#f7fbff]"
+                    onClick={() => markNotificationRead(notification.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-950">{notification.title}</p>
+                      {notification.status === "OKUNMADI" ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" /> : null}
+                    </div>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">{notification.message}</p>
+                    <p className="mt-2 text-xs text-slate-400">{shortDate(notification.createdAt)}</p>
+                  </button>
+                ))}
+                {!visibleNotifications.length ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Henüz bildirim yok. Yeni görev, lead veya portföy aksiyonu geldiğinde burada görünecek.
+                  </div>
+                ) : null}
+              </div>
+            </Card>
           ) : null}
-        </Button>
+        </div>
       </div>
     </header>
   );
@@ -1159,6 +1200,39 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   const sourcePlatform = form.watch("sourcePlatform");
   const sourceUrl = form.watch("sourceUrl");
   const isManual = sourcePlatform === "Manuel";
+  const [sourcePreview, setSourcePreview] = useState<ListingPreview | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<"idle" | "loading" | "ready" | "empty">("idle");
+
+  useEffect(() => {
+    const trimmedUrl = sourceUrl?.trim() ?? "";
+    if (isManual || !trimmedUrl || !/^https?:\/\//i.test(trimmedUrl)) {
+      setSourcePreview(null);
+      setPreviewStatus("idle");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setPreviewStatus("loading");
+        const params = new URLSearchParams({ url: trimmedUrl, platform: sourcePlatform ?? "" });
+        const response = await fetch(`/api/listing-preview?${params.toString()}`, { signal: controller.signal });
+        const result = await response.json() as { preview: ListingPreview | null };
+        setSourcePreview(result.preview);
+        setPreviewStatus(result.preview ? "ready" : "empty");
+      } catch {
+        if (!controller.signal.aborted) {
+          setSourcePreview(null);
+          setPreviewStatus("empty");
+        }
+      }
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [isManual, sourcePlatform, sourceUrl]);
 
   if (propertyId && !property) return <Card className="p-8">Portföy bulunamadı.</Card>;
   if (!canManagePortfolio(user, property)) return <AccessDenied />;
@@ -1170,14 +1244,38 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
         className="grid gap-4 md:grid-cols-2"
         onSubmit={form.handleSubmit((values) => {
           const sourceUrl = values.sourceUrl || values.listingUrl || "";
-          const title = isManual ? values.title : `${values.sourcePlatform} kaynaklı portföy`;
+          const title = isManual ? values.title : sourcePreview?.title ?? `${values.sourcePlatform} kaynaklı portföy`;
           const payload = {
             ...values,
+            ...(sourcePreview ? {
+              title: sourcePreview.title,
+              listingType: sourcePreview.listingType,
+              price: sourcePreview.price,
+              currency: sourcePreview.currency,
+              city: sourcePreview.city,
+              district: sourcePreview.district,
+              neighborhood: sourcePreview.neighborhood,
+              projectName: sourcePreview.projectName,
+              squareMeters: sourcePreview.squareMeters,
+              rooms: sourcePreview.rooms,
+              floor: sourcePreview.floor,
+              buildingAge: sourcePreview.buildingAge,
+              furnished: sourcePreview.furnished,
+              description: sourcePreview.description,
+              features: sourcePreview.features,
+              coverImage: sourcePreview.coverImage,
+              gallery: sourcePreview.gallery,
+              videoUrl: sourcePreview.videoUrl,
+              externalId: sourcePreview.externalId,
+              sourcePlatform: sourcePreview.sourcePlatform,
+              sourceType: sourcePreview.sourceType,
+              syncedAt: new Date().toISOString(),
+            } : {}),
             title,
             listingUrl: sourceUrl,
             sourceUrl,
             syncStatus: "MANUAL" as const,
-            sourceType: isManual ? "MANUAL" as const : values.sourceType,
+            sourceType: isManual ? "MANUAL" as const : sourcePreview?.sourceType ?? values.sourceType,
           };
           if (property) {
             updateProperty(property.id, payload as Partial<Property>);
@@ -1190,7 +1288,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
       >
         <div className="md:col-span-2 rounded-lg border border-blue-100 bg-[#f3f8ff] p-4">
           <p className="text-sm font-semibold text-primary">İlan kaynağı</p>
-          <p className="mt-1 text-sm text-muted-foreground">Sahibinden, Emlakjet, Hürriyet Emlak veya Hepsiemlak linkini kaynak olarak sakla. Veri otomatik çekilmez; bilgileri güvenli şekilde manuel girersin.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Sahibinden, Emlakjet, Hürriyet Emlak veya Hepsiemlak linkini yapıştır. Ön izleme hazırlanır; resmi API bağlandığında fotoğraf ve bilgiler aynı akıştan güncellenir.</p>
           <div className="mt-3 grid gap-3 md:grid-cols-[220px_1fr_220px]">
             <Select {...form.register("sourcePlatform")}>
               <option value="Manuel">Manuel</option>
@@ -1207,10 +1305,24 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
             </Select>
           </div>
           {!isManual ? (
-            <div className="mt-3 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs text-muted-foreground">
-              Hızlı kaynak kaydı: Başlık, fiyat, m² gibi alanları doldurman gerekmez. Detayları sonra portföy düzenlemeden tamamlarsın.
-              {sourceUrl ? <span className="ml-1 text-primary">Link hazır.</span> : null}
-            </div>
+            <>
+              <div className="mt-3 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs text-muted-foreground">
+                Hızlı kaynak kaydı: Başlık, fiyat, m² gibi alanları doldurman gerekmez. Ön izleme gelirse portföy kaydına otomatik yazılır.
+                {sourceUrl ? <span className="ml-1 text-primary">Link hazır.</span> : null}
+              </div>
+              {previewStatus === "loading" ? (
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-white p-4 text-sm text-muted-foreground">
+                  <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                  İlan ön izlemesi hazırlanıyor
+                </div>
+              ) : null}
+              {sourcePreview ? <ListingPreviewCard preview={sourcePreview} /> : null}
+              {previewStatus === "empty" ? (
+                <div className="mt-3 rounded-lg border border-blue-100 bg-white p-4 text-sm text-muted-foreground">
+                  Bu linkten ön izleme alınamadı. Linki kontrol et veya resmi API bağlantısı aktif olduğunda tekrar dene.
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
         {isManual ? (
@@ -1236,6 +1348,45 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
         </div>
       </form>
     </Card>
+  );
+}
+
+function ListingPreviewCard({ preview }: { preview: ListingPreview }) {
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-blue-100 bg-white shadow-sm shadow-blue-950/5">
+      <div className="grid gap-0 md:grid-cols-[220px_1fr]">
+        <div className="relative h-44 md:h-full">
+          <Image src={preview.coverImage} alt={preview.title} fill sizes="220px" className="object-cover" />
+        </div>
+        <div className="p-4">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+            <div>
+              <div className="flex flex-wrap gap-2">
+                <Badge label={preview.sourcePlatform} />
+                <Badge label={preview.confidence === "KNOWN_LISTING" ? "Ön izleme hazır" : "URL ön izleme"} />
+              </div>
+              <p className="mt-3 text-base font-semibold text-slate-950">{preview.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{preview.neighborhood}, {preview.district} · {preview.rooms} · {preview.squareMeters} m²</p>
+            </div>
+            <p className="text-lg font-semibold text-primary">{money(preview.price, preview.currency)}</p>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+            <InfoBox label="İşlem" value={preview.listingType === "KIRALIK" ? "Kiralık" : "Satılık"} />
+            <InfoBox label="Proje" value={preview.projectName} />
+            <InfoBox label="Kat" value={preview.floor} />
+            <InfoBox label="Eşyalı" value={preview.furnished ? "Evet" : "Hayır"} />
+          </div>
+          <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{preview.description}</p>
+          <div className="mt-4 flex gap-2 overflow-hidden">
+            {preview.gallery.slice(0, 4).map((image, index) => (
+              <div key={`${image}-${index}`} className="relative h-14 w-20 shrink-0 overflow-hidden rounded-md border border-border">
+                <Image src={image} alt={`${preview.title} fotoğraf ${index + 1}`} fill sizes="80px" className="object-cover" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
