@@ -6,9 +6,12 @@ import { initialData } from "@/lib/demo-data";
 import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
 import type { CrmData, Lead, LeadAction, MarketComparable, Notification, Property, Task, User } from "@/lib/types";
 
+type NewPropertyOptionalFields = "coverImage" | "gallery" | "videoUrl" | "city" | "projectName" | "floor" | "buildingAge" | "furnished" | "description" | "features";
+type NewPropertyInput = Omit<Property, "id" | "createdAt" | NewPropertyOptionalFields> & Partial<Pick<Property, NewPropertyOptionalFields>>;
+
 type CrmContextValue = {
   data: CrmData;
-  addProperty: (property: Omit<Property, "id" | "createdAt" | "coverImage" | "gallery" | "videoUrl" | "city" | "projectName" | "floor" | "buildingAge" | "furnished" | "description" | "features">) => string;
+  addProperty: (property: NewPropertyInput) => string;
   updateProperty: (id: string, patch: Partial<Property>) => void;
   deleteProperty: (id: string) => void;
   addLead: (lead: Omit<Lead, "id" | "createdAt" | "status" | "notes">) => void;
@@ -61,16 +64,16 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
           {
             ...property,
             id,
-            city: "İstanbul",
-            projectName: "Unit Global Özel Portföy",
-            floor: "Ara kat",
-            buildingAge: "0-5 yıl",
-            furnished: false,
-            description: "Yeni eklenen premium portföy. Detaylar danışman tarafından güncellenecek.",
-            features: ["Otopark", "Güvenlik", "Teras"],
-            coverImage: "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=900&q=80",
-            gallery: [],
-            videoUrl: "",
+            city: property.city ?? "İstanbul",
+            projectName: property.projectName ?? "Unit Global Özel Portföy",
+            floor: property.floor ?? "Ara kat",
+            buildingAge: property.buildingAge ?? "0-5 yıl",
+            furnished: property.furnished ?? false,
+            description: property.description ?? "Yeni eklenen premium portföy. Detaylar danışman tarafından güncellenecek.",
+            features: property.features ?? ["Otopark", "Güvenlik", "Teras"],
+            coverImage: property.coverImage ?? "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=900&q=80",
+            gallery: property.gallery ?? [],
+            videoUrl: property.videoUrl ?? "",
             listingUrl: property.listingUrl ?? "",
             sourcePlatform: property.sourcePlatform ?? "Manual",
             sourceUrl: property.sourceUrl ?? property.listingUrl ?? "",
