@@ -1,0 +1,322 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OFFICE_MANAGER
+  CONSULTANT
+}
+
+enum PropertyType {
+  SATILIK
+  KIRALIK
+}
+
+enum PropertyStatus {
+  AKTIF
+  PASIF
+  OPSIYONLU
+  SATILDI
+  KIRALANDI
+}
+
+enum PropertySourceType {
+  OWN_LISTING
+  AUTHORIZED_PORTFOLIO
+  MANUAL
+}
+
+enum PropertySyncStatus {
+  SYNCED
+  MANUAL
+  PENDING
+  ERROR
+}
+
+enum LeadStatus {
+  YENI_LEAD
+  ARANDI
+  RANDEVU_ALINDI
+  YER_GOSTERILDI
+  TEKLIF_VERILDI
+  KAPANDI
+  KAYBEDILDI
+}
+
+enum TaskStatus {
+  ACIK
+  DEVAM
+  TAMAMLANDI
+}
+
+enum Priority {
+  DUSUK
+  ORTA
+  YUKSEK
+}
+
+enum TaskType {
+  ARAMA
+  RANDEVU
+  YER_GOSTERIMI
+  EVRAK_TAKIBI
+  FOTOGRAF_CEKIMI
+  FIYAT_GUNCELLEME
+  MUSTERI_TAKIBI
+}
+
+enum NotificationStatus {
+  OKUNMADI
+  OKUNDU
+}
+
+enum ComparableSource {
+  Sahibinden
+  Hepsiemlak
+  Emlakjet
+}
+
+enum ComparableStatus {
+  AKTIF
+  PASIF
+  FIYAT_DEGISTI
+}
+
+model User {
+  id             String         @id @default(cuid())
+  name           String
+  email          String         @unique
+  emailVerified  DateTime?
+  image          String?
+  passwordHash   String?
+  role           Role           @default(CONSULTANT)
+  title          String
+  phone          String
+  avatarColor    String         @default("bg-blue-900")
+  active         Boolean        @default(true)
+  accounts       Account[]
+  sessions       Session[]
+  properties     Property[]
+  leads          Lead[]
+  leadActions    LeadAction[]
+  assignedTasks  Task[]         @relation("AssignedTasks")
+  createdTasks   Task[]         @relation("CreatedTasks")
+  notifications  Notification[] @relation("TargetNotifications")
+  activityLogs   ActivityLog[]
+  assignments    Assignment[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Property {
+  id           String                 @id @default(cuid())
+  title        String
+  listingType  PropertyType
+  price        Int
+  currency     String                 @default("TRY")
+  city         String
+  district     String
+  neighborhood String
+  projectName  String
+  squareMeters Int
+  rooms        String
+  floor        String
+  buildingAge  String
+  furnished    Boolean                @default(false)
+  description  String
+  features     String[]
+  coverImage   String
+  videoUrl     String?
+  listingUrl   String?
+  sourcePlatform String?
+  sourceUrl    String?
+  externalId   String?
+  syncedAt     DateTime?
+  syncStatus   PropertySyncStatus @default(MANUAL)
+  sourceType   PropertySourceType @default(MANUAL)
+  status       PropertyStatus         @default(AKTIF)
+  consultantId String
+  consultant   User                   @relation(fields: [consultantId], references: [id])
+  images       PropertyImage[]
+  comparables  MarketComparable[]
+  reports      MarketAnalysisReport[]
+  priceHistory PriceHistory[]
+  assignments  Assignment[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String
+  url        String
+  alt        String
+  sortOrder  Int      @default(0)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Lead {
+  id           String       @id @default(cuid())
+  name         String
+  email        String
+  phone        String
+  source       String
+  budget       Int
+  interest     String
+  preferredLocation String?
+  propertyType String?
+  appointmentAt DateTime?
+  status       LeadStatus   @default(YENI_LEAD)
+  notes        String
+  consultantId String
+  consultant   User         @relation(fields: [consultantId], references: [id])
+  actions      LeadAction[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model LeadAction {
+  id        String   @id @default(cuid())
+  leadId    String
+  userId    String
+  action    String
+  note      String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Task {
+  id           String     @id @default(cuid())
+  title        String
+  description  String
+  type         TaskType?
+  dueDate      DateTime
+  priority     Priority   @default(ORTA)
+  status       TaskStatus @default(ACIK)
+  assignedToId String
+  createdById  String
+  leadId       String?
+  propertyId   String?
+  assignedTo   User       @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  createdBy    User       @relation("CreatedTasks", fields: [createdById], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Notification {
+  id           String             @id @default(cuid())
+  title        String
+  message      String
+  targetUserId String?
+  targetUser   User?              @relation("TargetNotifications", fields: [targetUserId], references: [id])
+  status       NotificationStatus @default(OKUNMADI)
+  createdAt    DateTime           @default(now())
+}
+
+model MarketComparable {
+  id            String           @id @default(cuid())
+  propertyId    String
+  source        ComparableSource
+  title         String
+  url           String
+  price         Int
+  squareMeters  Int
+  district      String
+  lastCheckedAt DateTime
+  status        ComparableStatus @default(AKTIF)
+  property      Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model MarketAnalysisReport {
+  id                String   @id @default(cuid())
+  propertyId        String
+  averagePrice      Int
+  minPrice          Int
+  maxPrice          Int
+  averageSqmPrice   Int
+  competitorCount   Int
+  pricePosition     String
+  suggestedMin      Int
+  suggestedMax      Int
+  consultantComment String
+  property          Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+}
+
+model PriceHistory {
+  id         String   @id @default(cuid())
+  propertyId String
+  price      Int
+  date       DateTime
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Assignment {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  role       String   @default("PRIMARY")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  id                String   @id @default(cuid())
+  companyName       String
+  defaultCurrency   String   @default("TRY")
+  leadSlaHours      Int      @default(24)
+  notificationEmail String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
