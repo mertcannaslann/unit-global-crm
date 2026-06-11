@@ -85,6 +85,15 @@ function canManageOffice(user: User) {
   return user.role === "ADMIN" || user.role === "OFFICE_MANAGER";
 }
 
+function canCreatePortfolio(user: User) {
+  return user.role === "CONSULTANT";
+}
+
+function canManagePortfolio(user: User, property?: Property) {
+  if (user.role !== "CONSULTANT") return false;
+  return !property || property.consultantId === user.id;
+}
+
 function roleLabel(role: User["role"]) {
   if (role === "ADMIN") return "Platform Admin";
   if (role === "OFFICE_MANAGER") return "Ofis Sahibi";
@@ -616,7 +625,12 @@ function Dashboard({ user }: { user: User }) {
             {scopedProperties.slice(0, 5).map((property) => (
               <PropertyRow key={property.id} property={property} consultant={data.users.find((item) => item.id === property.consultantId)} />
             ))}
-            {!scopedProperties.length ? <EmptyState title="Henüz portföy yok" description="İlk portföyü Sahibinden linkiyle veya manuel formdan ekleyebilirsin." /> : null}
+            {!scopedProperties.length ? (
+              <EmptyState
+                title="Henüz portföy yok"
+                description={canCreatePortfolio(user) ? "İlk portföyü Sahibinden linkiyle veya manuel formdan ekleyebilirsin." : "Danışman portföy eklediğinde ofis akışı burada görünür."}
+              />
+            ) : null}
           </div>
         </Card>
 
@@ -749,7 +763,7 @@ function PropertiesPage({ user }: { user: User }) {
           <option value="TUMU">Lokasyon: Tümü</option>
           {locations.map((item) => <option key={item} value={item}>{item}</option>)}
         </Select>
-        {canManageOffice(user) ? (
+        {canCreatePortfolio(user) ? (
           <>
             <Button
               variant="outline"
@@ -773,7 +787,11 @@ function PropertiesPage({ user }: { user: User }) {
               </Button>
             </Link>
           </>
-        ) : null}
+        ) : (
+          <div className="rounded-md border border-blue-100 bg-[#f7fbff] px-3 py-2 text-sm text-muted-foreground">
+            Portföy girişi danışman ekranından yapılır; bu ekran ofis takibi içindir.
+          </div>
+        )}
       </Toolbar>
 
       <Card className="overflow-hidden">
@@ -820,17 +838,23 @@ function PropertiesPage({ user }: { user: User }) {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => updateProperty(property.id, { status: property.status === "AKTIF" ? "OPSIYONLU" : "AKTIF" })}>
-                        Durum
-                      </Button>
-                      <Link className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium" href={`/portfoyler/${property.id}/duzenle`}>
-                        Düzenle
-                      </Link>
-                      {canManageOffice(user) ? (
+                      {canManagePortfolio(user, property) ? (
+                        <>
+                          <Button variant="outline" size="sm" onClick={() => updateProperty(property.id, { status: property.status === "AKTIF" ? "OPSIYONLU" : "AKTIF" })}>
+                            Durum
+                          </Button>
+                          <Link className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium" href={`/portfoyler/${property.id}/duzenle`}>
+                            Düzenle
+                          </Link>
                         <Button variant="ghost" size="icon" onClick={() => deleteProperty(property.id)}>
                           <Trash2 className="h-4 w-4 text-danger" />
                         </Button>
-                      ) : null}
+                        </>
+                      ) : (
+                        <Link className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium" href={`/portfoyler/${property.id}`}>
+                          İncele
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -838,7 +862,9 @@ function PropertiesPage({ user }: { user: User }) {
               {!visibleProperties.length ? (
                 <tr>
                   <td className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={9}>
-                    Henüz portföy yok. Tek giriş noktası Portföy Ekle sayfası; Sahibinden linkini de orada ekleyebilirsin.
+                    {canCreatePortfolio(user)
+                      ? "Henüz portföy yok. Tek giriş noktası Portföy Ekle sayfası; Sahibinden linkini de orada ekleyebilirsin."
+                      : "Henüz portföy yok. Danışman portföy eklediğinde owner panelinde takip edebilirsin."}
                   </td>
                 </tr>
               ) : null}
@@ -911,12 +937,18 @@ function PropertyDetail({ user, propertyId }: { user: User; propertyId: string }
               ))}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link href={`/portfoyler/${property.id}/duzenle`}>
-                <Button>Düzenle</Button>
-              </Link>
-              <Button variant="outline" onClick={() => updateProperty(property.id, { status: "SATILDI" })}>
-                Satıldı İşaretle
-              </Button>
+              {canManagePortfolio(user, property) ? (
+                <>
+                  <Link href={`/portfoyler/${property.id}/duzenle`}>
+                    <Button>Düzenle</Button>
+                  </Link>
+                  <Button variant="outline" onClick={() => updateProperty(property.id, { status: "SATILDI" })}>
+                    Satıldı İşaretle
+                  </Button>
+                </>
+              ) : (
+                <Badge label="Ofis takip modu" />
+              )}
             </div>
           </div>
         </Card>
@@ -1086,7 +1118,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   const { data, addProperty, updateProperty } = useCrm();
   const property = data.properties.find((item) => item.id === propertyId);
   const consultants = data.users.filter((item) => item.role === "CONSULTANT");
-  const defaultConsultantId = consultants[0]?.id ?? user.id;
+  const defaultConsultantId = property?.consultantId ?? user.id;
   const form = useForm({
     resolver: zodResolver(propertySchema),
     defaultValues: {
@@ -1098,7 +1130,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
       neighborhood: property?.neighborhood ?? "Belirlenecek",
       squareMeters: property?.squareMeters ?? 20,
       rooms: property?.rooms ?? "1+1",
-      consultantId: property?.consultantId ?? defaultConsultantId,
+      consultantId: defaultConsultantId,
       status: property?.status ?? "AKTIF",
       listingUrl: property?.listingUrl ?? "",
       sourcePlatform: property?.sourcePlatform ?? "Sahibinden",
@@ -1110,7 +1142,8 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   const sourceUrl = form.watch("sourceUrl");
   const isManual = sourcePlatform === "Manuel";
 
-  if (!canManageOffice(user)) return <AccessDenied />;
+  if (propertyId && !property) return <Card className="p-8">Portföy bulunamadı.</Card>;
+  if (!canManagePortfolio(user, property)) return <AccessDenied />;
 
   return (
     <Card className="p-5">
@@ -1174,7 +1207,10 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
             <Field label="Oda sayısı"><Input {...form.register("rooms")} /></Field>
           </>
         ) : null}
-        <Field label="Danışman"><Select {...form.register("consultantId")}>{consultants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
+        <input type="hidden" {...form.register("consultantId")} />
+        <Field label="Danışman">
+          <InfoBox label="Portföy sahibi" value={consultants.find((item) => item.id === defaultConsultantId)?.name ?? user.name} />
+        </Field>
         <Field label="Durum"><Select {...form.register("status")}>{statusOptions.map((item) => <option key={item} value={item}>{item}</option>)}</Select></Field>
         <div className="md:col-span-2 flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => router.push("/portfoyler")}>Vazgeç</Button>
