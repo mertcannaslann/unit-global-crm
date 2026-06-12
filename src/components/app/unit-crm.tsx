@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -56,15 +56,6 @@ import type { CrmData, Lead, MarketListing, Notification, OfficeClient, Property
 
 type CrmAppProps = {
   slug: string[];
-};
-
-type GoogleCalendarStatus = {
-  connected: boolean;
-  configReady?: boolean;
-  userEmail?: string;
-  googleEmail?: string | null;
-  calendarId?: string;
-  updatedAt?: string | null;
 };
 
 type LeadFormValues = z.infer<typeof leadSchema>;
@@ -125,6 +116,20 @@ function roleLabel(role: User["role"]) {
 
 function calendarEmailForUser(user: User) {
   return user.calendarEmail || user.email;
+}
+
+function inviteFromEmailForClient(client?: OfficeClient) {
+  return client?.inviteFromEmail?.trim() || "mrtcnasln@gmail.com";
+}
+
+function generateTemporaryPassword(prefix = "CRM") {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint32Array(10);
+  if (typeof window !== "undefined" && window.crypto) {
+    window.crypto.getRandomValues(bytes);
+  }
+  const randomPart = Array.from(bytes, (value, index) => alphabet[(value || Date.now() + index) % alphabet.length]).join("");
+  return `${prefix}${randomPart}!`;
 }
 
 function isValidEmail(value: string) {
@@ -432,6 +437,7 @@ function ClientLogoMark({ client, fallbackName, compact = false }: { client?: Of
 function PageHeader({ slug, user, client }: { slug: string[]; user: User; client?: OfficeClient }) {
   const { data, markNotificationRead } = useCrm();
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
   const todayLabel = useMemo(() => formatTurkishDate(new Date()), []);
   const titleMap: Record<string, string> = {
     dashboard: "Dashboard",
@@ -455,6 +461,9 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const unreadCount = visibleNotifications.filter((item) => item.status === "OKUNMADI").length;
+  const pendingTasks = data.tasks
+    .filter((item) => item.status !== "TAMAMLANDI" && (canSeeOffice(user) || item.assignedToId === user.id || item.createdById === user.id))
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   return (
     <header className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -464,6 +473,50 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm shadow-blue-950/[0.03]">Bugün: {todayLabel}</div>
+        <div className="relative">
+          <Button
+            className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-3 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
+            variant="outline"
+            onClick={() => setTaskOpen((open) => !open)}
+            aria-label="Bekleyen İşler"
+          >
+            <ClipboardList className="h-4 w-4 stroke-[1.8]" />
+            {pendingTasks.length ? (
+              <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
+                {pendingTasks.length}
+              </span>
+            ) : null}
+          </Button>
+          {taskOpen ? (
+            <Card className="absolute right-0 top-12 z-50 w-[min(92vw,360px)] overflow-hidden rounded-2xl border-slate-200/80 shadow-xl shadow-blue-950/10">
+              <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Bekleyen İşler</p>
+                  <p className="text-xs text-muted-foreground">{pendingTasks.length} açık</p>
+                </div>
+                <Button size="icon" variant="ghost" onClick={() => setTaskOpen(false)} aria-label="Bekleyen işleri kapat">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {pendingTasks.slice(0, 8).map((task) => (
+                  <Link key={task.id} href="/gorevler" className="block border-b border-slate-200/70 px-4 py-3 text-left transition hover:bg-[#f7fbff]" onClick={() => setTaskOpen(false)}>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-950">{task.title}</p>
+                      <Badge label={task.status} />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{shortDate(task.dueDate)} teslim</p>
+                  </Link>
+                ))}
+                {!pendingTasks.length ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Henüz görev yok
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
+        </div>
         <div className="relative">
           <Button
             className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-4 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
@@ -549,16 +602,15 @@ function AccessDenied() {
 
 function PlatformAdminDashboard({ user }: { user: User }) {
   const { data, upsertClient } = useCrm();
+  const unitClient = data.clients.find((client) => client.id === "client-unit-global");
   const [officeName, setOfficeName] = useState("Unit Global");
   const [ownerName, setOwnerName] = useState("Dorukhan Öründü");
   const [ownerEmail, setOwnerEmail] = useState("dorukhan@unitglobal.com");
+  const [inviteFromEmail, setInviteFromEmail] = useState(unitClient?.inviteFromEmail ?? "mrtcnasln@gmail.com");
   const [consultantCount, setConsultantCount] = useState(1);
-  const [clientLogoUrl, setClientLogoUrl] = useState(data.clients.find((client) => client.id === "client-unit-global")?.logoUrl ?? "");
+  const [clientLogoUrl, setClientLogoUrl] = useState(unitClient?.logoUrl ?? "");
   const officeMemberList = officeUsers(data.users);
-  const [generatedAccounts, setGeneratedAccounts] = useState([
-    { role: "Ofis Sahibi", name: "Dorukhan Öründü", email: "dorukhan@unitglobal.com", password: "Owner123!" },
-    { role: "Danışman", name: "Kaan Öründü", email: "kaan@unitglobal.com", password: "Consultant123!" },
-  ]);
+  const [generatedAccounts, setGeneratedAccounts] = useState<Array<{ role: string; name: string; email: string; password: string }>>([]);
   const offices = data.clients.map((client) => {
     const members = data.users.filter((item) => item.clientId === client.id && item.role !== "ADMIN");
     const isUnitGlobal = client.id === "client-unit-global";
@@ -571,6 +623,22 @@ function PlatformAdminDashboard({ user }: { user: User }) {
       leads: isUnitGlobal ? data.leads.length : 0,
     };
   });
+  const leadImportRows = data.leads
+    .map((lead) => {
+      const consultant = data.users.find((item) => item.id === lead.consultantId);
+      const uploader = data.users.find((item) => item.id === lead.importedById) ?? consultant;
+      const client = data.clients.find((item) => item.id === (uploader?.clientId ?? consultant?.clientId));
+      return {
+        id: lead.id,
+        leadId: displayLeadId(lead),
+        clientName: client?.name ?? "Ofis seçilmedi",
+        customer: lead.propertyOwner || lead.name || "-",
+        uploader: uploader?.name ?? "Bilinmeyen kullanıcı",
+        source: lead.importSource ?? lead.source ?? "Eski kayıt",
+        importedAt: lead.importedAt ?? lead.createdAt,
+      };
+    })
+    .sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
   const slug = officeName.toLocaleLowerCase("tr").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c").replace(/[^a-z0-9]+/g, "").slice(0, 18) || "ofis";
   const clientId = slug === "unitglobal" ? "client-unit-global" : `client-${slug}`;
 
@@ -603,6 +671,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
       id: clientId,
       name: officeName || "Yeni Ofis",
       ownerName: ownerName || "Ofis Sahibi",
+      inviteFromEmail: inviteFromEmail.trim() || "mrtcnasln@gmail.com",
       userLimit: OFFICE_USER_LIMIT,
       status: "Hazır",
       logoUrl: clientLogoUrl || undefined,
@@ -612,13 +681,13 @@ function PlatformAdminDashboard({ user }: { user: User }) {
         role: "Ofis Sahibi",
         name: ownerName || "Ofis Sahibi",
         email: ownerEmail || `owner@${slug}.com`,
-        password: `${slug}Owner1!`,
+        password: generateTemporaryPassword("Owner"),
       },
       ...Array.from({ length: count }).map((_, index) => ({
         role: "Danışman",
         name: `Danışman ${index + 1}`,
         email: `danisman${index + 1}@${slug}.crm`,
-        password: `${slug}D${index + 1}!`,
+        password: generateTemporaryPassword(`D${index + 1}`),
       })),
     ];
     setGeneratedAccounts(accounts);
@@ -656,6 +725,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
             <Field label="Ofis adı"><Input value={officeName} onChange={(event) => setOfficeName(event.target.value)} /></Field>
             <Field label="Ofis sahibi"><Input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} /></Field>
             <Field label="Owner e-posta"><Input value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} /></Field>
+            <Field label="Davet gönderen e-posta"><Input type="email" value={inviteFromEmail} onChange={(event) => setInviteFromEmail(event.target.value)} placeholder="info@unitglobal.com" /></Field>
             <Field label="Müşteri logosu">
               <div className="flex items-center gap-3 rounded-lg border border-border bg-slate-50 p-3">
                 <div className="flex h-14 w-32 shrink-0 items-center justify-center rounded-md border border-border bg-white p-2">
@@ -713,6 +783,11 @@ function PlatformAdminDashboard({ user }: { user: User }) {
                     <td className="px-5 py-4 font-mono text-xs">{account.password}</td>
                   </tr>
                 ))}
+                {!generatedAccounts.length ? (
+                  <tr>
+                    <td className="px-5 py-8 text-center text-sm text-muted-foreground" colSpan={4}>Henüz kullanıcı girişi üretilmedi.</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -728,6 +803,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
                 <tr>
                   <th className="px-5 py-3 font-semibold">Ofis</th>
                   <th className="px-5 py-3 font-semibold">Owner</th>
+                  <th className="px-5 py-3 font-semibold">Davet e-postası</th>
                   <th className="px-5 py-3 font-semibold">Kullanıcı</th>
                   <th className="px-5 py-3 font-semibold">Portföy</th>
                   <th className="px-5 py-3 font-semibold">Müşteri</th>
@@ -750,6 +826,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
                       </div>
                     </td>
                     <td className="px-5 py-4">{office.owner}</td>
+                    <td className="px-5 py-4 text-muted-foreground">{office.inviteFromEmail ?? "-"}</td>
                     <td className="px-5 py-4">{office.users}/{office.userLimit}</td>
                     <td className="px-5 py-4">{office.properties}</td>
                     <td className="px-5 py-4">{office.leads}</td>
@@ -773,6 +850,41 @@ function PlatformAdminDashboard({ user }: { user: User }) {
           </p>
         </Card>
       </div>
+
+      <Card className="overflow-hidden">
+        <SectionTitle title="Müşteri Yükleme Takibi" action={`${leadImportRows.length} müşteri`} padded />
+        <div className="max-h-[420px] overflow-auto">
+          <table className="w-full min-w-[920px] border-collapse text-sm">
+            <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Ofis</th>
+                <th className="px-5 py-3 font-semibold">ID</th>
+                <th className="px-5 py-3 font-semibold">Müşteri</th>
+                <th className="px-5 py-3 font-semibold">Yükleyen</th>
+                <th className="px-5 py-3 font-semibold">Kaynak</th>
+                <th className="px-5 py-3 font-semibold">Tarih</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {leadImportRows.map((row) => (
+                <tr key={row.id} className="bg-white hover:bg-slate-50">
+                  <td className="px-5 py-4 font-medium">{row.clientName}</td>
+                  <td className="px-5 py-4 font-mono text-xs">{row.leadId}</td>
+                  <td className="px-5 py-4">{row.customer}</td>
+                  <td className="px-5 py-4">{row.uploader}</td>
+                  <td className="px-5 py-4">{row.source}</td>
+                  <td className="px-5 py-4">{shortDate(row.importedAt)}</td>
+                </tr>
+              ))}
+              {!leadImportRows.length ? (
+                <tr>
+                  <td className="px-5 py-8 text-center text-sm text-muted-foreground" colSpan={6}>Henüz müşteri yükleme kaydı yok.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -807,7 +919,6 @@ function Dashboard({ user }: { user: User }) {
     aksiyon: scopedTasks.length ? index + 1 : 0,
   }));
   const statusData = statusOptions.map((status) => ({ name: status, value: scopedProperties.filter((item) => item.status === status).length }));
-  const pipelineData = leadStages.map((stage) => ({ name: humanize(stage), value: scopedLeads.filter((lead) => lead.status === stage).length }));
   const performanceUsers = canSeeOffice(user) ? data.users.filter((item) => item.role === "CONSULTANT") : [user];
   const consultantData = performanceUsers.map((consultant) => ({
     name: consultant.name.split(" ")[0],
@@ -962,41 +1073,6 @@ function Dashboard({ user }: { user: User }) {
           ) : null}
       </div>
 
-      <Card className={`${cardShell} overflow-hidden`}>
-        <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
-              <Bell className="h-5 w-5 stroke-[1.8]" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-slate-950">Kira Sözleşmesi Hatırlatmaları</h2>
-              {!tenantReminders.length ? <p className="mt-1 text-sm leading-6 text-slate-500">7, 5, 3 gün kalan veya bugün çıkışı olan kiracı kaydı yok.</p> : null}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            {!tenantReminders.length ? (
-              <div className="hidden h-14 w-32 items-center justify-center rounded-full bg-violet-50/70 text-violet-300 md:flex">
-                <CheckCircle2 className="h-8 w-8 stroke-[1.6]" />
-              </div>
-            ) : null}
-            <Link href="/musteriler" className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-4 py-2 text-sm font-semibold text-primary shadow-sm shadow-blue-950/[0.03] transition hover:bg-blue-50">
-              {tenantReminders.length} bildirim
-              <ChevronRight className="h-4 w-4 stroke-[1.8]" />
-            </Link>
-          </div>
-        </div>
-        {tenantReminders.length ? (
-        <div className="grid gap-3 border-t border-slate-200/70 px-5 pb-5 pt-4 md:grid-cols-2 xl:grid-cols-4">
-          {tenantReminders.slice(0, 8).map((notification) => (
-            <div key={notification.id} className="rounded-2xl border border-blue-100 bg-[#f7fbff] p-3 text-sm shadow-sm shadow-blue-950/[0.03]">
-              <p className="font-semibold text-slate-950">{notification.title}</p>
-              <p className="mt-1 leading-5 text-muted-foreground">{notification.message}</p>
-            </div>
-          ))}
-        </div>
-        ) : null}
-      </Card>
-
       <div className="grid gap-5 xl:grid-cols-[0.95fr_0.95fr_1.15fr]">
         <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Hızlı İşlemler" />
@@ -1104,18 +1180,7 @@ function Dashboard({ user }: { user: User }) {
         </Card>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
-        <Card className={`${cardShell} p-5`}>
-          <SectionTitle title="Lead Pipeline" action={<Link href="/musteriler">Leadleri Gör</Link>} />
-          <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-            {pipelineData.map((stage) => (
-              <div key={stage.name} className="rounded-2xl border border-slate-200/70 bg-white/80 p-3 shadow-sm shadow-blue-950/[0.03]">
-                <p className="text-xs text-muted-foreground">{stage.name}</p>
-                <p className="mt-3 text-2xl font-semibold text-slate-950">{stage.value}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
+      <div className="grid gap-5">
         <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Danışman Performansı" action="Ofis" />
           <div className="h-52">
@@ -1133,7 +1198,7 @@ function Dashboard({ user }: { user: User }) {
         </Card>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+      <div className="grid gap-5">
         <Card className={`${cardShell} overflow-hidden`}>
           <SectionTitle title={canSeeOffice(user) ? "Premium Portföy Akışı" : "Atanmış Portföylerim"} action={<Link href="/portfoyler">Tümünü Gör</Link>} padded />
           <div className="divide-y divide-border">
@@ -1146,23 +1211,6 @@ function Dashboard({ user }: { user: User }) {
                 description={canCreatePortfolio(user) ? "İlk portföyü Sahibinden linkiyle veya manuel formdan ekleyebilirsin." : "Danışman portföy eklediğinde ofis akışı burada görünür."}
               />
             ) : null}
-          </div>
-        </Card>
-
-        <Card className={`${cardShell} p-5`}>
-          <SectionTitle title="Bekleyen İşler" action={`${scopedTasks.filter((item) => item.status !== "TAMAMLANDI").length} açık`} />
-          <div className="space-y-3">
-            {scopedTasks.slice(0, 6).map((task) => (
-              <div key={task.id} className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-3 shadow-sm shadow-blue-950/[0.03]">
-                <CheckCircle2 className={`mt-0.5 h-4 w-4 ${task.status === "TAMAMLANDI" ? "text-success" : "text-primary"}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{task.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{shortDate(task.dueDate)} teslim</p>
-                </div>
-                <Badge label={task.status} />
-              </div>
-            ))}
-            {!scopedTasks.length ? <EmptyState title="Henüz görev yok" description="Görevler oluşturuldukça burada görünecek." /> : null}
           </div>
         </Card>
       </div>
@@ -2130,6 +2178,18 @@ function tenantSummary(lead: Lead) {
   return "Belirtilmedi";
 }
 
+function displayLeadDate(value?: string) {
+  return value ? shortDate(value) : "Tarih yok";
+}
+
+function displayLeadId(lead: Pick<Lead, "id" | "externalId">) {
+  if (lead.externalId?.trim()) return lead.externalId.trim();
+  const importMatch = lead.id.match(/^lead-import-\d+-(.+)$/);
+  if (importMatch?.[1]) return importMatch[1];
+  const leadMatch = lead.id.match(/^lead-(.+)$/);
+  return leadMatch?.[1] ?? lead.id;
+}
+
 function exportLeadsToExcel(leads: Lead[], users: User[]) {
   if (!leads.length) {
     toast.error("Dışa aktarılacak müşteri bulunamadı");
@@ -2138,7 +2198,7 @@ function exportLeadsToExcel(leads: Lead[], users: User[]) {
 
   const headers = ["ID", "Mülk Sahibi", "Telefon", "Adres", "Semt", "Kiracı Bilgisi", "Kiracı Adı", "Giriş Tarihi", "Çıkış Tarihi", "Kiracı Notu", "Danışman", "Durum", "Notlar"];
   const rows = leads.map((lead) => [
-    lead.externalId || lead.id,
+    displayLeadId(lead),
     lead.propertyOwner || lead.name || "",
     lead.propertyOwnerPhone || lead.phone || "",
     lead.address || "",
@@ -2180,6 +2240,8 @@ function LeadsPage({ user }: { user: User }) {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [note, setNote] = useState("");
   const [query, setQuery] = useState("");
+  const [groupBy, setGroupBy] = useState("NONE");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [importing, setImporting] = useState(false);
   const firstConsultantId = data.users.find((item) => item.role === "CONSULTANT")?.id ?? user.id;
   const defaultLeadValues: LeadFormValues = {
@@ -2205,9 +2267,49 @@ function LeadsPage({ user }: { user: User }) {
   };
   const form = useForm<LeadFormValues>({ resolver: zodResolver(leadSchema), defaultValues: defaultLeadValues });
   const watchedAddress = form.watch("address");
-  const leads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && `${lead.name} ${lead.externalId ?? ""} ${lead.address ?? ""} ${lead.preferredLocation ?? ""} ${lead.propertyOwner ?? ""} ${lead.notes} ${lead.interest}`.toLowerCase().includes(query.toLowerCase()));
   const consultants = data.users.filter((item) => item.role === "CONSULTANT");
-  const pipeline = leadStages.map((stage) => ({ stage, count: leads.filter((lead) => lead.status === stage).length }));
+  const normalizedQuery = normalizeMarketText(query.trim());
+  const leads = data.leads.filter((lead) => {
+    if (!canSeeOffice(user) && lead.consultantId !== user.id) return false;
+    if (!normalizedQuery) return true;
+    const consultantName = data.users.find((item) => item.id === lead.consultantId)?.name ?? "";
+    const haystack = normalizeMarketText([
+      displayLeadId(lead),
+      lead.externalId,
+      lead.propertyOwner,
+      lead.propertyOwnerPhone,
+      lead.name,
+      lead.phone,
+      lead.email,
+      lead.address,
+      lead.preferredLocation,
+      extractDistrictFromAddress(lead.address),
+      tenantSummary(lead),
+      humanize(lead.status),
+      consultantName,
+      lead.notes,
+      lead.tenantName,
+      lead.tenantNotes,
+    ].filter(Boolean).join(" "));
+    return haystack.includes(normalizedQuery);
+  });
+  const groupedLeads = useMemo(() => {
+    const labelFor = (lead: Lead) => {
+      if (groupBy === "SEMT") return lead.preferredLocation || extractDistrictFromAddress(lead.address) || "Semt yok";
+      if (groupBy === "MULK_SAHIBI") return lead.propertyOwner || lead.name || "Mülk sahibi yok";
+      if (groupBy === "KIRACI") return tenantSummary(lead);
+      if (groupBy === "DURUM") return humanize(lead.status);
+      if (groupBy === "DANISMAN") return data.users.find((item) => item.id === lead.consultantId)?.name ?? "Danışman yok";
+      return "Tüm müşteriler";
+    };
+    const groups = new Map<string, Lead[]>();
+    leads.forEach((lead) => {
+      const label = labelFor(lead);
+      groups.set(label, [...(groups.get(label) ?? []), lead]);
+    });
+    return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+  }, [data.users, groupBy, leads]);
+  const tableColumnCount = 6;
 
   useEffect(() => {
     const detectedDistrict = extractDistrictFromAddress(watchedAddress);
@@ -2241,7 +2343,7 @@ function LeadsPage({ user }: { user: User }) {
         imported = parseLeadImport(await file.text(), consultantId);
       }
 
-      importLeads(imported, file.name);
+      importLeads(imported, file.name, user.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Dosya okunamadı.");
     } finally {
@@ -2315,22 +2417,22 @@ function LeadsPage({ user }: { user: User }) {
         </form>
       </Card>
 
-      <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-          {pipeline.map((item) => (
-            <div key={item.stage} className="rounded-md border border-border bg-white p-3">
-              <p className="text-xs text-muted-foreground">{humanize(item.stage)}</p>
-              <p className="mt-2 text-xl font-semibold text-slate-950">{item.count}</p>
-            </div>
-          ))}
-        </div>
-      </Card>
-
       <Toolbar>
         <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="ID, adres, semt, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <Input className="pl-9" placeholder="ID, adres, semt, mülk sahibi, telefon veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
+        <Select className="md:w-56" value={groupBy} onChange={(event) => {
+          setGroupBy(event.target.value);
+          setCollapsedGroups({});
+        }}>
+          <option value="NONE">Gruplama yok</option>
+          <option value="SEMT">Semte göre grupla</option>
+          <option value="MULK_SAHIBI">Mülk sahibine göre grupla</option>
+          <option value="KIRACI">Kiracı bilgisine göre grupla</option>
+          <option value="DURUM">Duruma göre grupla</option>
+          <option value="DANISMAN">Danışmana göre grupla</option>
+        </Select>
         {canManageOffice(user) ? (
           <Button variant="outline" onClick={() => exportLeadsToExcel(leads, data.users)}>
             <Download className="h-4 w-4" />
@@ -2342,7 +2444,7 @@ function LeadsPage({ user }: { user: User }) {
 
       <Card className="overflow-hidden border-slate-300 bg-white">
         <div className="max-h-[680px] overflow-auto">
-          <table className="w-full min-w-[1380px] border-collapse text-xs">
+          <table className="w-full min-w-[1120px] border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-[#e8f3ff] text-left text-[11px] uppercase tracking-wide text-primary">
               <tr>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">ID</th>
@@ -2351,28 +2453,42 @@ function LeadsPage({ user }: { user: User }) {
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Adres</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Semt</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Kiracı Bilgisi</th>
-                <th className="hidden border border-slate-300 px-3 py-2 font-semibold xl:table-cell">Danışman</th>
-                <th className="border border-slate-300 px-3 py-2 font-semibold">Durum</th>
-                <th className="border border-slate-300 px-3 py-2 font-semibold">Notlar</th>
               </tr>
             </thead>
             <tbody>
-              {leads.map((lead) => (
-                <tr key={lead.id} className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]" onClick={() => setSelectedLead(lead)}>
-                  <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.externalId || lead.id}</td>
-                  <td className="max-w-[240px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950">{lead.propertyOwner || lead.name || "-"}</td>
-                  <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.propertyOwnerPhone || lead.phone || "-"}</td>
-                  <td className="max-w-[420px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-slate-800">{lead.address || "-"}</td>
-                  <td className="border border-slate-200 px-3 py-2 text-slate-800">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
-                  <td className="border border-slate-200 px-3 py-2"><Badge label={tenantSummary(lead)} /></td>
-                  <td className="hidden border border-slate-200 px-3 py-2 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
-                  <td className="border border-slate-200 px-3 py-2"><Badge label={lead.status} /></td>
-                  <td className="max-w-[320px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-muted-foreground">{lead.notes || "-"}</td>
-                </tr>
+              {groupedLeads.map((group) => (
+                <Fragment key={group.label}>
+                  {groupBy !== "NONE" ? (
+                    <tr className="bg-slate-100">
+                      <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-800" colSpan={tableColumnCount}>
+                        <button
+                          className="flex w-full items-center justify-between gap-3 text-left"
+                          onClick={() => setCollapsedGroups((current) => ({ ...current, [group.label]: !current[group.label] }))}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <ChevronRight className={`h-4 w-4 transition ${collapsedGroups[group.label] ? "" : "rotate-90"}`} />
+                            {group.label}
+                          </span>
+                          <span className="rounded-full bg-white px-2 py-1 text-[11px] text-muted-foreground">{group.items.length} kayıt</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ) : null}
+                  {collapsedGroups[group.label] ? null : group.items.map((lead) => (
+                    <tr key={lead.id} className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]" onClick={() => setSelectedLead(lead)}>
+                      <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{displayLeadId(lead)}</td>
+                      <td className="max-w-[260px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950">{lead.propertyOwner || lead.name || "-"}</td>
+                      <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.propertyOwnerPhone || lead.phone || "-"}</td>
+                      <td className="max-w-[520px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-slate-800">{lead.address || "-"}</td>
+                      <td className="border border-slate-200 px-3 py-2 text-slate-800">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
+                      <td className="border border-slate-200 px-3 py-2"><Badge label={tenantSummary(lead)} /></td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
               {!leads.length ? (
                 <tr>
-                  <td className="border border-slate-200 px-4 py-10 text-center text-muted-foreground" colSpan={9}>Müşteri kaydı bulunamadı.</td>
+                  <td className="border border-slate-200 px-4 py-10 text-center text-muted-foreground" colSpan={tableColumnCount}>Müşteri kaydı bulunamadı.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -2451,7 +2567,7 @@ function LeadPopup({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Mülk / Kiracı Kartı</p>
             <h2 className="mt-1 text-xl font-semibold text-slate-950">{lead.propertyOwner || lead.name}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">ID {lead.externalId || lead.id} · {consultantName}</p>
+            <p className="mt-1 text-sm text-muted-foreground">ID {displayLeadId(lead)} · {consultantName}</p>
           </div>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Kapat">
             <X className="h-5 w-5" />
@@ -2459,17 +2575,43 @@ function LeadPopup({
         </div>
 
         <div className="max-h-[calc(92vh-76px)] overflow-y-auto p-5">
-          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-7">
             <InfoRow label="Mülk sahibi" value={lead.propertyOwner || "-"} />
             <InfoRow label="Telefon" value={lead.propertyOwnerPhone || lead.phone || "-"} />
             <InfoRow label="Adres" value={lead.address || "-"} />
             <InfoRow label="Semt" value={lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"} />
             <InfoRow label="Kiracı durumu" value={tenantSummary({ ...lead, tenantStatus, tenantName })} />
+            <InfoRow label="Durum" value={humanize(status)} />
+            <InfoRow label="Danışman" value={consultantName} />
           </div>
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
             <Card className="border-blue-100 bg-[#f7fbff] p-4">
               <SectionTitle title="Kiracı / Kira Bilgisi" action={daysLeft !== null ? tenantReminderText(daysLeft) : "Tarih yok"} />
+              <div className="mb-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-primary">
+                      <CalendarDays className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Giriş tarihi</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-950">{displayLeadDate(tenantMoveIn)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                      <CalendarDays className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Çıkış tarihi</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-950">{displayLeadDate(tenantMoveOut)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="Kiracı durumu">
                   <Select value={tenantStatus} onChange={(event) => setTenantStatus(event.target.value as NonNullable<Lead["tenantStatus"]>)}>
@@ -2578,7 +2720,7 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
             </Select>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-            <InfoBox label="ID" value={lead.externalId || lead.id} />
+            <InfoBox label="ID" value={displayLeadId(lead)} />
             <InfoBox label="Mülk Sahibi" value={lead.propertyOwner || "-"} />
             <InfoBox label="Telefon" value={lead.propertyOwnerPhone || lead.phone || "-"} />
             <InfoBox label="Adres" value={lead.address || lead.preferredLocation || "-"} />
@@ -2751,22 +2893,42 @@ function CalendarPage({ user }: { user: User }) {
   const [time, setTime] = useState("10:00");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [reminderMinutes, setReminderMinutes] = useState(30);
-  const [calendarSyncing, setCalendarSyncing] = useState(false);
+  const [inviteSending, setInviteSending] = useState(false);
   const [selectedDay, setSelectedDay] = useState(today.getDate());
   const assignees = canManageOffice(user) ? data.users.filter((item) => item.active && item.role !== "ADMIN") : [user];
   const [assignedToId, setAssignedToId] = useState(assignees[0]?.id ?? user.id);
   const tasks = data.tasks.filter((task) => canSeeOffice(user) || task.assignedToId === user.id);
+  const calendarProperties = data.properties.filter((property) => canSeeOffice(user) || property.consultantId === user.id);
+  const activeClient = clientForUser(data, user);
+  const companyName = activeClient?.name ?? data.setting.companyName;
+  const organizerEmail = inviteFromEmailForClient(activeClient);
   const weekdays = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
   const firstOffset = (new Date(calendarYear, calendarMonth, 1).getDay() + 6) % 7;
   const calendarCells = [...Array.from({ length: firstOffset }, () => null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
+  const propertyLocationLabel = (property: Property) => `${property.title} · ${property.neighborhood}, ${property.district}`;
+  const propertyLocationValue = (property: Property) => [property.neighborhood, property.district, property.city].filter(Boolean).join(", ");
+  const normalizedLocation = normalizeMarketText(location.trim());
+  const matchedProperty = normalizedLocation ? calendarProperties.find((property) => {
+    const candidates = [property.title, property.projectName, propertyLocationLabel(property), propertyLocationValue(property)].filter(Boolean);
+    return candidates.some((candidate) => normalizeMarketText(candidate).includes(normalizedLocation) || normalizedLocation.includes(normalizeMarketText(candidate)));
+  }) : undefined;
   const dayEvents = (day: number) => tasks.filter((task) => {
     const date = new Date(task.dueDate);
     return date.getFullYear() === calendarYear && date.getMonth() === calendarMonth && date.getDate() === day;
   });
+
   const createCalendarTask = async () => {
     const assignedUser = assignees.find((item) => item.id === assignedToId) ?? user;
     if (!title.trim()) {
       toast.error("Görev başlığı gir.");
+      return;
+    }
+    if (!isValidEmail(calendarEmailForUser(assignedUser))) {
+      toast.error("Danışmanın davet e-postası geçerli değil.");
+      return;
+    }
+    if (!isValidEmail(organizerEmail)) {
+      toast.error("Ofis davet gönderen e-postası geçerli değil.");
       return;
     }
 
@@ -2779,78 +2941,56 @@ function CalendarPage({ user }: { user: User }) {
       type: "RANDEVU" as const,
       dueDate: start.toISOString(),
       endDate: end.toISOString(),
-      location: location.trim(),
+      location: matchedProperty ? propertyLocationValue(matchedProperty) : location.trim(),
       reminderMinutes,
       priority: "ORTA" as const,
       assignedToId: assignedUser.id,
       createdById: user.id,
+      propertyId: matchedProperty?.id,
     };
     const id = addTask(taskPayload);
     setTitle("");
     setDescription("");
     setLocation("");
 
+    setInviteSending(true);
     try {
-      const response = await fetch("/api/google-calendar/events", {
+      const response = await fetch("/api/calendar-invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: { id, ...taskPayload }, attendeeEmail: calendarEmailForUser(assignedUser) }),
+        body: JSON.stringify({
+          task: { id, ...taskPayload },
+          attendeeEmail: calendarEmailForUser(assignedUser),
+          attendeeName: assignedUser.name,
+          companyName,
+          organizerEmail,
+        }),
       });
-      const result = await response.json() as { connected?: boolean; eventId?: string; htmlLink?: string; responseStatus?: string; error?: string };
-
-      if (response.status === 409) {
-        toast.info("Görev CRM'e eklendi. Google daveti için owner veya danışman Google hesabını bağlamalı.");
-        return;
-      }
+      const result = await response.json() as { sent?: boolean; mode?: "email" | "mailto"; calendarUrl?: string; mailtoUrl?: string; error?: string };
 
       if (!response.ok) {
-        toast.error(result.error ?? "Google Calendar daveti oluşturulamadı.");
+        toast.error(result.error ?? "E-posta daveti hazırlanamadı.");
         return;
       }
 
       updateTask(id, {
-        googleCalendarEventId: result.eventId,
-        googleCalendarHtmlLink: result.htmlLink,
-        googleCalendarResponseStatus: result.responseStatus ?? "needsAction",
+        calendarInviteUrl: result.calendarUrl,
+        calendarInviteStatus: result.sent ? "E-posta gönderildi" : "Mail hazırlandı",
       });
-      toast.success("Google Calendar daveti gönderildi");
+      if (result.sent) {
+        toast.success("E-posta daveti gönderildi");
+        return;
+      }
+      if (result.mailtoUrl) {
+        window.location.href = result.mailtoUrl;
+        toast.info("Mail uygulaması hazır davet metniyle açıldı");
+        return;
+      }
+      toast.success("Takvim daveti hazırlandı");
     } catch {
-      toast.error("Görev eklendi fakat Google Calendar'a ulaşılamadı.");
-    }
-  };
-  const syncGoogleResponses = async () => {
-    setCalendarSyncing(true);
-    try {
-      const attendeesByTaskId = Object.fromEntries(
-        tasks
-          .filter((task) => task.googleCalendarEventId)
-          .map((task) => {
-            const assignedUser = data.users.find((item) => item.id === task.assignedToId) ?? user;
-            return [task.id, calendarEmailForUser(assignedUser)];
-          }),
-      );
-      const response = await fetch("/api/google-calendar/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attendeesByTaskId }),
-      });
-      const result = await response.json() as { connected?: boolean; updates?: Array<{ taskId: string; eventId?: string; htmlLink?: string; responseStatus?: string }> };
-      if (response.status === 409) {
-        toast.info("Google Takvim bağlantısı bulunamadı.");
-        return;
-      }
-      if (!response.ok) {
-        toast.error("Google Takvim yanıtları senkronize edilemedi.");
-        return;
-      }
-      (result.updates ?? []).forEach((item) => updateTask(item.taskId, {
-        googleCalendarEventId: item.eventId,
-        googleCalendarHtmlLink: item.htmlLink,
-        googleCalendarResponseStatus: item.responseStatus,
-      }));
-      toast.success(`${result.updates?.length ?? 0} takvim yanıtı senkronize edildi`);
+      toast.error("Görev eklendi fakat e-posta daveti hazırlanamadı.");
     } finally {
-      setCalendarSyncing(false);
+      setInviteSending(false);
     }
   };
 
@@ -2912,8 +3052,11 @@ function CalendarPage({ user }: { user: User }) {
                     <p className="text-sm font-semibold">{task.title}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Danışman"}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
-                      {task.googleCalendarHtmlLink ? (
+                      {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
+                      {task.googleCalendarResponseStatus && !task.calendarInviteStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                      {task.calendarInviteUrl ? (
+                        <a className="text-xs font-medium text-primary" href={task.calendarInviteUrl} target="_blank" rel="noreferrer">Takvime ekle</a>
+                      ) : task.googleCalendarHtmlLink ? (
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
                     </div>
@@ -2929,7 +3072,13 @@ function CalendarPage({ user }: { user: User }) {
           <div className="space-y-3">
             <Input placeholder="Örn: Bebek yer gösterimi" value={title} onChange={(event) => setTitle(event.target.value)} />
             <Textarea placeholder="Açıklama / müşteri notu" value={description} onChange={(event) => setDescription(event.target.value)} />
-            <Input placeholder="Konum: Bebek, İstanbul veya açık adres" value={location} onChange={(event) => setLocation(event.target.value)} />
+            <Input list="calendar-property-location-options" placeholder="Portföy adı veya konum yaz" value={location} onChange={(event) => setLocation(event.target.value)} />
+            <datalist id="calendar-property-location-options">
+              {calendarProperties.map((property) => (
+                <option key={property.id} value={propertyLocationLabel(property)} />
+              ))}
+            </datalist>
+            {matchedProperty ? <p className="rounded-md border border-blue-100 bg-[#f7fbff] px-3 py-2 text-xs text-muted-foreground">Seçilen portföy: {matchedProperty.title}</p> : null}
             <div className="grid gap-3 sm:grid-cols-3">
               <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
               <Select value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}>
@@ -2945,19 +3094,23 @@ function CalendarPage({ user }: { user: User }) {
               </Select>
             </div>
             {canManageOffice(user) ? <Select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}>{assignees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}
-            <Button className="w-full" onClick={createCalendarTask}>Takvime Ekle ve Davet Gönder</Button>
+            <Button className="w-full" onClick={createCalendarTask} disabled={inviteSending}>
+              {inviteSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
+              Takvime Ekle ve Davet Gönder
+            </Button>
           </div>
         </Card>
         <Card className="p-5">
-          <SectionTitle title="Google Takvim" action={<Badge label="OAuth" />} />
-          <p className="text-sm leading-6 text-muted-foreground">Her danışman kendi Google hesabını bağlar. Görev oluşturulunca davet maili Google tarafından gönderilir.</p>
-          <div className="mt-4 grid gap-2">
-            <Button onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>Google hesabını bağla</Button>
-            <Button variant="outline" disabled={calendarSyncing} onClick={syncGoogleResponses}>
-              <RefreshCw className={`h-4 w-4 ${calendarSyncing ? "animate-spin" : ""}`} />
-              Davet Yanıtlarını Senkronize Et
-            </Button>
+          <SectionTitle title="E-posta Daveti" action={<Badge label="Takvime Ekle" />} />
+          <p className="text-sm leading-6 text-muted-foreground">Randevu ve görev daveti şirket adıyla hazırlanır. Mail içindeki Takvime Ekle bağlantısı Google, Apple ve Outlook takvimlerinde açılır.</p>
+          <div className="mt-4 space-y-3 text-sm">
+            <InfoRow label="Şirket" value={companyName} />
+            <InfoRow label="Gönderen" value={organizerEmail} />
+            <InfoRow label="Mail servisi" value="Bağlanınca otomatik gönderim" />
           </div>
+          <p className="mt-4 rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
+            Mail servisi canlıya bağlanana kadar sistem hazır davet metniyle mail uygulamasını açar.
+          </p>
         </Card>
       </div>
     </div>
@@ -3287,13 +3440,13 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
     ],
   },
   {
-    key: "googleCalendar",
-    name: "Google Takvim",
-    status: "Randevu senkronizasyonu",
-    scope: "Takvim, randevu, yer gösterimi ve takip görevleri",
+    key: "calendarInvites",
+    name: "Takvim Davet Maili",
+    status: "Şirket adına davet e-postası",
+    scope: "Randevu, yer gösterimi ve takip görevleri için Takvime Ekle maili",
     fields: [
-      { id: "calendarLink", label: "Takvim linki / ID", placeholder: "Google Takvim linki veya Calendar ID" },
-      { id: "connectionCode", label: "Bağlantı kodu", placeholder: "Google bağlantı kodu", secret: true },
+      { id: "fromEmail", label: "Gönderen e-posta", placeholder: "info@unitglobal.com" },
+      { id: "mailProviderKey", label: "Mail servis anahtarı", placeholder: "Canlı mail servisi bağlanınca girilecek", secret: true },
     ],
   },
 ];
@@ -3301,8 +3454,6 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
 function IntegrationsPage() {
   const { data } = useCrm();
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
-  const [calendarStatus, setCalendarStatus] = useState<GoogleCalendarStatus | null>(null);
-  const [calendarStatusLoading, setCalendarStatusLoading] = useState(true);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("unit-crm-integration-drafts");
@@ -3310,25 +3461,6 @@ function IntegrationsPage() {
     } catch {
       window.localStorage.removeItem("unit-crm-integration-drafts");
     }
-  }, []);
-  useEffect(() => {
-    let active = true;
-    setCalendarStatusLoading(true);
-    fetch("/api/google-calendar/status")
-      .then((response) => (response.ok ? response.json() as Promise<GoogleCalendarStatus> : null))
-      .then((status) => {
-        if (active) setCalendarStatus(status);
-      })
-      .catch(() => {
-        if (active) setCalendarStatus(null);
-      })
-      .finally(() => {
-        if (active) setCalendarStatusLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
   }, []);
   const updateDraft = (integrationKey: string, fieldId: string, value: string) => {
     setDrafts((current) => ({
@@ -3350,19 +3482,9 @@ function IntegrationsPage() {
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-2">
         {integrationFormConfigs.map((integration) => {
-          const isGoogleCalendar = integration.key === "googleCalendar";
-          const calendarConnected = Boolean(calendarStatus?.connected);
-          const ready = isGoogleCalendar ? calendarConnected || hasAnyValue(integration.key) : hasAnyValue(integration.key);
-          const badgeLabel = isGoogleCalendar ? (calendarStatusLoading ? "Kontrol" : calendarConnected ? "Bağlı" : "OAuth") : ready ? "Hazır" : "Form";
-          const statusLabel = isGoogleCalendar
-            ? calendarConnected
-              ? "Google hesabı bağlı"
-              : calendarStatusLoading
-                ? "Bağlantı kontrol ediliyor"
-                : "Bağlantı bekleniyor"
-            : ready
-              ? "Bağlantı bilgisi hazır"
-              : "Bağlantı bekleniyor";
+          const ready = hasAnyValue(integration.key);
+          const badgeLabel = ready ? "Hazır" : "Form";
+          const statusLabel = ready ? "Bağlantı bilgisi hazır" : "Bağlantı bekleniyor";
 
           return (
             <Card key={integration.key} className="p-5">
@@ -3376,12 +3498,6 @@ function IntegrationsPage() {
               <div className="mt-5 space-y-3 text-sm">
                 <InfoRow label="Veri kapsamı" value={integration.scope} />
                 <InfoRow label="Durum" value={statusLabel} />
-                {isGoogleCalendar && calendarConnected ? (
-                  <>
-                    <InfoRow label="Bağlı hesap" value={calendarStatus?.googleEmail ?? calendarStatus?.userEmail ?? "Google hesabı"} />
-                    <InfoRow label="Takvim" value={calendarStatus?.calendarId ?? "primary"} />
-                  </>
-                ) : null}
                 <InfoRow label="Scraping" value="Yok" />
               </div>
               <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -3398,12 +3514,6 @@ function IntegrationsPage() {
               </div>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                 <Button onClick={() => saveIntegration(integration.key, integration.name)}>Bilgileri Kaydet</Button>
-                {isGoogleCalendar ? (
-                  <Button variant="outline" onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>
-                    <CalendarDays className="h-4 w-4" />
-                    {calendarConnected ? "Google OAuth Yeniden Bağla" : "Google OAuth ile Bağla"}
-                  </Button>
-                ) : null}
               </div>
             </Card>
           );
@@ -3420,14 +3530,27 @@ function IntegrationsPage() {
 }
 
 function SettingsPage({ user }: { user: User }) {
-  const { data, addUser, updateUser, deleteUser } = useCrm();
+  const { data, addUser, updateUser, deleteUser, upsertClient } = useCrm();
   const isPlatform = user.role === "ADMIN";
   const members = officeUsers(data.users);
+  const activeClient = clientForUser(data, user);
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPhone, setNewUserPhone] = useState("");
   const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
+  const [officeInviteEmail, setOfficeInviteEmail] = useState(inviteFromEmailForClient(activeClient));
   const remainingSlots = Math.max(OFFICE_USER_LIMIT - members.length, 0);
+  useEffect(() => {
+    setOfficeInviteEmail(inviteFromEmailForClient(activeClient));
+  }, [activeClient]);
+  const saveOfficeInviteEmail = () => {
+    const email = officeInviteEmail.trim().toLowerCase();
+    if (!activeClient || !isValidEmail(email)) {
+      toast.error("Geçerli bir ofis davet e-postası gir.");
+      return;
+    }
+    upsertClient({ ...activeClient, inviteFromEmail: email });
+  };
   const saveCalendarEmail = (member: User) => {
     const email = (emailDrafts[member.id] ?? calendarEmailForUser(member)).trim().toLowerCase();
     if (!email || !isValidEmail(email)) {
@@ -3509,11 +3632,15 @@ function SettingsPage({ user }: { user: User }) {
           <Field label="Ad soyad"><Input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Örn: Yeni Danışman" /></Field>
           <Field label="E-posta"><Input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="danisman@unitglobal.com" /></Field>
           <Field label="Telefon"><Input value={newUserPhone} onChange={(event) => setNewUserPhone(event.target.value)} placeholder="+90 5xx xxx xx xx" /></Field>
+          <Field label="Ofis davet e-postası"><Input type="email" value={officeInviteEmail} onChange={(event) => setOfficeInviteEmail(event.target.value)} placeholder="info@unitglobal.com" /></Field>
           <Field label="Rol">
             <Select value="CONSULTANT" disabled>
               <option value="CONSULTANT">Danışman</option>
             </Select>
           </Field>
+          <Button className="w-full" variant="outline" onClick={saveOfficeInviteEmail}>
+            Ofis Davet E-postasını Kaydet
+          </Button>
           <Button className="w-full" onClick={createUser} disabled={remainingSlots <= 0}>
             <Plus className="h-4 w-4" />
             Kullanıcı Ekle
