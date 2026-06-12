@@ -14,6 +14,7 @@ export type User = {
   id: string;
   name: string;
   email: string;
+  calendarEmail?: string;
   role: Role;
   title: string;
   phone: string;
