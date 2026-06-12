@@ -18,7 +18,7 @@ type CrmContextValue = {
   importLeads: (leads: Array<Omit<Lead, "id" | "createdAt" | "status" | "notes">>, sourceName?: string) => void;
   addLeadAction: (leadId: string, userId: string, note: string) => void;
   updateLead: (id: string, patch: Partial<Lead>) => void;
-  addTask: (task: Omit<Task, "id" | "status">) => void;
+  addTask: (task: Omit<Task, "id" | "status">) => string;
   updateTask: (id: string, patch: Partial<Task>) => void;
   addNotification: (notification: Omit<Notification, "id" | "createdAt" | "status">) => void;
   markNotificationRead: (id: string) => void;
@@ -158,8 +158,10 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       toast.success("Lead güncellendi");
     },
     addTask: (task) => {
-      setData((current) => ({ ...current, tasks: [{ ...task, id: `task-${Date.now()}`, status: "ACIK" }, ...current.tasks] }));
+      const id = `task-${Date.now()}`;
+      setData((current) => ({ ...current, tasks: [{ ...task, id, status: "ACIK", reminderMinutes: task.reminderMinutes ?? 30 }, ...current.tasks] }));
       toast.success("Görev oluşturuldu");
+      return id;
     },
     updateTask: (id, patch) => {
       setData((current) => ({ ...current, tasks: current.tasks.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
