@@ -32,7 +32,7 @@ type CrmContextValue = {
 };
 
 const CrmContext = createContext<CrmContextValue | null>(null);
-const STORAGE_KEY = "unit-global-crm-data-v7";
+const STORAGE_KEY = "unit-global-crm-data-v8";
 
 function normalizeData(saved: CrmData): CrmData {
   const defaultUnitGlobal = defaultClients.find((client) => client.id === "client-unit-global");
