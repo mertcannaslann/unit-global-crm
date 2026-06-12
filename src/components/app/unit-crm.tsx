@@ -152,6 +152,27 @@ function humanize(value?: string) {
   return labels[value] ?? value.replaceAll("_", " ");
 }
 
+function formatTurkishDate(date: Date) {
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Istanbul",
+  }).format(date);
+}
+
+function formatTurkishMonth(date: Date) {
+  return new Intl.DateTimeFormat("tr-TR", {
+    month: "long",
+    timeZone: "Europe/Istanbul",
+  }).format(date);
+}
+
+function sameCalendarDay(value: string, target: Date) {
+  const date = new Date(value);
+  return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth() && date.getDate() === target.getDate();
+}
+
 export function CrmApp({ slug }: CrmAppProps) {
   const { data } = useCrm();
   const { data: session, status } = useSession();
@@ -301,6 +322,7 @@ function Avatar({ user }: { user: User }) {
 function PageHeader({ slug, user }: { slug: string[]; user: User }) {
   const { data, markNotificationRead } = useCrm();
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const todayLabel = useMemo(() => formatTurkishDate(new Date()), []);
   const titleMap: Record<string, string> = {
     dashboard: "Dashboard",
     portfoyler: "Portföyler",
@@ -327,7 +349,7 @@ function PageHeader({ slug, user }: { slug: string[]; user: User }) {
         <p className="mt-1 text-sm text-muted-foreground">{workspaceName(user)} · {roleLabel(user.role)}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="rounded-md border border-border bg-white px-3 py-2 text-sm text-muted-foreground">Bugün: 11 Haziran 2026</div>
+        <div className="rounded-md border border-border bg-white px-3 py-2 text-sm text-muted-foreground">Bugün: {todayLabel}</div>
         <div className="relative">
           <Button
             className="relative bg-white text-slate-700 hover:bg-[#f3f8ff] hover:text-primary"
@@ -579,11 +601,12 @@ function PlatformAdminDashboard({ user }: { user: User }) {
 
 function Dashboard({ user }: { user: User }) {
   const { data } = useCrm();
+  const today = useMemo(() => new Date(), []);
   if (user.role === "ADMIN") return <PlatformAdminDashboard user={user} />;
   const scopedProperties = canSeeOffice(user) ? data.properties : data.properties.filter((item) => item.consultantId === user.id);
   const scopedLeads = canSeeOffice(user) ? data.leads : data.leads.filter((item) => item.consultantId === user.id);
   const scopedTasks = canSeeOffice(user) ? data.tasks : data.tasks.filter((item) => item.assignedToId === user.id);
-  const todayTasks = scopedTasks.filter((item) => new Date(item.dueDate).getDate() === 9 || item.status !== "TAMAMLANDI");
+  const todayTasks = scopedTasks.filter((item) => item.status !== "TAMAMLANDI" && sameCalendarDay(item.dueDate, today));
   const appointments = scopedTasks.filter((item) => item.type === "RANDEVU" || item.type === "YER_GOSTERIMI");
   const activeSale = scopedProperties.filter((item) => item.status === "AKTIF" && item.listingType === "SATILIK").length;
   const activeRent = scopedProperties.filter((item) => item.status === "AKTIF" && item.listingType === "KIRALIK").length;
@@ -1806,6 +1829,11 @@ function TasksPage({ user }: { user: User }) {
 
 function CalendarPage({ user }: { user: User }) {
   const { data, addTask, updateTask } = useCrm();
+  const today = useMemo(() => new Date(), []);
+  const calendarYear = today.getFullYear();
+  const calendarMonth = today.getMonth();
+  const calendarMonthLabel = formatTurkishMonth(today);
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
@@ -1813,14 +1841,17 @@ function CalendarPage({ user }: { user: User }) {
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [reminderMinutes, setReminderMinutes] = useState(30);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
-  const [selectedDay, setSelectedDay] = useState(11);
+  const [selectedDay, setSelectedDay] = useState(today.getDate());
   const assignees = canManageOffice(user) ? data.users.filter((item) => item.active && item.role !== "ADMIN") : [user];
   const [assignedToId, setAssignedToId] = useState(assignees[0]?.id ?? user.id);
   const tasks = data.tasks.filter((task) => canSeeOffice(user) || task.assignedToId === user.id);
   const weekdays = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
-  const firstOffset = (new Date(2026, 5, 1).getDay() + 6) % 7;
-  const calendarCells = [...Array.from({ length: firstOffset }, () => null), ...Array.from({ length: 30 }, (_, index) => index + 1)];
-  const dayEvents = (day: number) => tasks.filter((task) => new Date(task.dueDate).getMonth() === 5 && new Date(task.dueDate).getDate() === day);
+  const firstOffset = (new Date(calendarYear, calendarMonth, 1).getDay() + 6) % 7;
+  const calendarCells = [...Array.from({ length: firstOffset }, () => null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
+  const dayEvents = (day: number) => tasks.filter((task) => {
+    const date = new Date(task.dueDate);
+    return date.getFullYear() === calendarYear && date.getMonth() === calendarMonth && date.getDate() === day;
+  });
   const createCalendarTask = async () => {
     const assignedUser = assignees.find((item) => item.id === assignedToId) ?? user;
     if (!title.trim()) {
@@ -1829,7 +1860,7 @@ function CalendarPage({ user }: { user: User }) {
     }
 
     const [hour = "10", minute = "00"] = time.split(":");
-    const start = new Date(2026, 5, selectedDay, Number(hour), Number(minute));
+    const start = new Date(calendarYear, calendarMonth, selectedDay, Number(hour), Number(minute));
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
     const taskPayload = {
       title: title.trim(),
@@ -1908,7 +1939,7 @@ function CalendarPage({ user }: { user: User }) {
             <p className="text-lg font-semibold text-slate-950">Ekip Takvimi</p>
             <p className="text-sm text-muted-foreground">Randevu, yer gösterimi ve takip görevleri</p>
           </div>
-          <Button variant="outline" onClick={() => setSelectedDay(11)}>Bugün</Button>
+          <Button variant="outline" onClick={() => setSelectedDay(today.getDate())}>Bugün</Button>
         </div>
         <div className="grid grid-cols-7 border-b border-border bg-[#e8f3ff] text-xs font-semibold uppercase tracking-wide text-primary">
           {weekdays.map((day) => <div key={day} className="px-3 py-3">{day}</div>)}
@@ -1944,7 +1975,7 @@ function CalendarPage({ user }: { user: User }) {
       </Card>
       <div className="space-y-5">
         <Card className="p-5">
-          <SectionTitle title={`${selectedDay} Haziran`} />
+          <SectionTitle title={`${selectedDay} ${calendarMonthLabel}`} />
           <div className="space-y-3">
             {dayEvents(selectedDay).map((task) => (
               <div key={task.id} className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
