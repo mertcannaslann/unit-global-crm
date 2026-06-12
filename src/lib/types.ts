@@ -85,6 +85,7 @@ export type Lead = {
   tenantName?: string;
   tenantMoveIn?: string;
   tenantMoveOut?: string;
+  tenantNotes?: string;
   preferredLocation?: string;
   propertyType?: string;
   interestedPropertyIds?: string[];
