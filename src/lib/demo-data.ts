@@ -16,12 +16,6 @@ import type {
 } from "@/lib/types";
 import { UNIT_GLOBAL_LOGO_DATA_URL } from "@/lib/client-assets";
 
-export const demoCredentials = [
-  { email: "mertcan@unitcrm.com", password: "Mertcan123!", role: "ADMIN" },
-  { email: "dorukhan@unitglobal.com", password: "Owner123!", role: "OFFICE_MANAGER" },
-  { email: "kaan@unitglobal.com", password: "Consultant123!", role: "CONSULTANT" },
-] as const;
-
 export const users: User[] = [
   {
     id: "admin-1",
@@ -65,6 +59,7 @@ export const clients: OfficeClient[] = [
     id: "client-unit-global",
     name: "Unit Global",
     ownerName: "Dorukhan Öründü",
+    inviteFromEmail: "mrtcnasln@gmail.com",
     userLimit: 5,
     status: "Hazır",
     logoUrl: UNIT_GLOBAL_LOGO_DATA_URL,
