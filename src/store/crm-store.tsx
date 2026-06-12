@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { clients as defaultClients, initialData } from "@/lib/demo-data";
 import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
@@ -32,7 +32,6 @@ type CrmContextValue = {
 };
 
 const CrmContext = createContext<CrmContextValue | null>(null);
-const STORAGE_KEY = "unit-global-crm-data-v8";
 
 function normalizeData(saved: CrmData): CrmData {
   const defaultUnitGlobal = defaultClients.find((client) => client.id === "client-unit-global");
@@ -49,25 +48,59 @@ function normalizeData(saved: CrmData): CrmData {
 
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<CrmData>(initialData);
+  const [hydrated, setHydrated] = useState(false);
+  const saveErrorShown = useRef(false);
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setData(normalizeData(JSON.parse(saved) as CrmData));
+    let cancelled = false;
+
+    async function loadState() {
+      try {
+        const response = await fetch("/api/crm-state", { cache: "no-store" });
+        if (response.status === 401) return;
+        if (!response.ok) throw new Error("CRM verisi okunamadı");
+        const result = (await response.json()) as { data?: CrmData };
+        if (!cancelled && result.data) {
+          setData(normalizeData(result.data));
+        }
+      } catch {
+        if (!cancelled) {
+          toast.error("CRM verisi serverdan okunamadı. Geçici demo veri gösteriliyor.");
+        }
+      } finally {
+        if (!cancelled) {
+          setHydrated(true);
+        }
       }
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
     }
+
+    loadState();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      toast.error("Yerel kayıt alanı dolu. Lütfen eski tarayıcı verisini temizleyin.");
-    }
-  }, [data]);
+    if (!hydrated) return;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/crm-state", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data }),
+        });
+        if (!response.ok) throw new Error("CRM verisi kaydedilemedi");
+        saveErrorShown.current = false;
+      } catch {
+        if (!saveErrorShown.current) {
+          toast.error("CRM verisi servera kaydedilemedi.");
+          saveErrorShown.current = true;
+        }
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [data, hydrated]);
 
   const value = useMemo<CrmContextValue>(() => ({
     data,
