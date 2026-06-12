@@ -117,7 +117,9 @@ function parseWorksheetRows(xml: string, sharedStrings: string[]) {
       values[index] = cellValue(cell[1], cell[2], sharedStrings).trim();
     }
 
-    if (values.some(Boolean)) rows.push(values.map((value) => value ?? ""));
+    if (values.some(Boolean)) {
+      rows.push(Array.from({ length: values.length }, (_, index) => values[index] ?? ""));
+    }
   }
 
   return rows;
