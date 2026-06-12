@@ -601,7 +601,7 @@ function AccessDenied() {
 }
 
 function PlatformAdminDashboard({ user }: { user: User }) {
-  const { data, upsertClient } = useCrm();
+  const { data, upsertClient, resetClientData } = useCrm();
   const unitClient = data.clients.find((client) => client.id === "client-unit-global");
   const [officeName, setOfficeName] = useState("Unit Global");
   const [ownerName, setOwnerName] = useState("Dorukhan Öründü");
@@ -613,14 +613,20 @@ function PlatformAdminDashboard({ user }: { user: User }) {
   const [generatedAccounts, setGeneratedAccounts] = useState<Array<{ role: string; name: string; email: string; password: string }>>([]);
   const offices = data.clients.map((client) => {
     const members = data.users.filter((item) => item.clientId === client.id && item.role !== "ADMIN");
-    const isUnitGlobal = client.id === "client-unit-global";
+    const memberIds = new Set(members.map((item) => item.id));
+    const clientProperties = data.properties.filter((item) => memberIds.has(item.consultantId));
+    const clientPropertyIds = new Set(clientProperties.map((item) => item.id));
+    const clientLeads = data.leads.filter((item) => memberIds.has(item.consultantId) || (item.importedById ? memberIds.has(item.importedById) : false));
+    const clientLeadIds = new Set(clientLeads.map((item) => item.id));
     return {
       ...client,
       owner: client.ownerName,
-      users: members.length || (isUnitGlobal ? officeMemberList.length : 0),
+      users: members.length,
       userLimit: client.userLimit,
-      properties: isUnitGlobal ? data.properties.length : 0,
-      leads: isUnitGlobal ? data.leads.length : 0,
+      properties: clientProperties.length,
+      leads: clientLeads.length,
+      tasks: data.tasks.filter((item) => memberIds.has(item.assignedToId) || memberIds.has(item.createdById) || (item.leadId ? clientLeadIds.has(item.leadId) : false) || (item.propertyId ? clientPropertyIds.has(item.propertyId) : false)).length,
+      documents: data.documents.filter((item) => memberIds.has(item.assignedToId) || (item.relatedType === "PROPERTY" && clientPropertyIds.has(item.relatedId)) || (item.relatedType === "LEAD" && clientLeadIds.has(item.relatedId))).length,
     };
   });
   const leadImportRows = data.leads
@@ -692,6 +698,17 @@ function PlatformAdminDashboard({ user }: { user: User }) {
     ];
     setGeneratedAccounts(accounts);
     toast.success(`${officeName} için ${accounts.length}/${OFFICE_USER_LIMIT} kullanıcı girişi hazırlandı`);
+  }
+
+  function handleResetOfficeData(office: (typeof offices)[number]) {
+    const totalRecords = office.properties + office.leads + office.tasks + office.documents;
+    if (!totalRecords) {
+      toast.message(`${office.name} için temizlenecek test datası yok.`);
+      return;
+    }
+    const approved = window.confirm(`${office.name} test datası temizlensin mi? Kullanıcılar, logo ve ofis hesabı korunur; portföy, müşteri, görev, doküman ve rapor kayıtları silinir.`);
+    if (!approved) return;
+    resetClientData(office.id);
   }
 
   return (
@@ -798,7 +815,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
         <Card className="overflow-hidden">
           <SectionTitle title="Çalışılan Emlak Ofisleri" padded />
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-sm">
+            <table className="w-full min-w-[960px] border-collapse text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Ofis</th>
@@ -807,7 +824,9 @@ function PlatformAdminDashboard({ user }: { user: User }) {
                   <th className="px-5 py-3 font-semibold">Kullanıcı</th>
                   <th className="px-5 py-3 font-semibold">Portföy</th>
                   <th className="px-5 py-3 font-semibold">Müşteri</th>
+                  <th className="px-5 py-3 font-semibold">Görev</th>
                   <th className="px-5 py-3 font-semibold">Durum</th>
+                  <th className="px-5 py-3 font-semibold">İşlem</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -830,7 +849,18 @@ function PlatformAdminDashboard({ user }: { user: User }) {
                     <td className="px-5 py-4">{office.users}/{office.userLimit}</td>
                     <td className="px-5 py-4">{office.properties}</td>
                     <td className="px-5 py-4">{office.leads}</td>
+                    <td className="px-5 py-4">{office.tasks}</td>
                     <td className="px-5 py-4"><Badge label={office.status} /></td>
+                    <td className="px-5 py-4">
+                      <Button
+                        className="border-red-100 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        variant="outline"
+                        onClick={() => handleResetOfficeData(office)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Test Datasını Temizle
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
