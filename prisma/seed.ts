@@ -1,8 +1,14 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
-import { demoCredentials, initialData } from "../src/lib/demo-data";
+import { initialData } from "../src/lib/demo-data";
 
 const prisma = new PrismaClient();
+
+const seedCredentials = [
+  { email: process.env.ADMIN_LOGIN_EMAIL ?? "mertcan@unitcrm.com", password: process.env.ADMIN_LOGIN_PASSWORD },
+  { email: process.env.OWNER_LOGIN_EMAIL ?? "dorukhan@unitglobal.com", password: process.env.OWNER_LOGIN_PASSWORD },
+  { email: process.env.CONSULTANT_LOGIN_EMAIL ?? "kaan@unitglobal.com", password: process.env.CONSULTANT_LOGIN_PASSWORD },
+];
 
 async function main() {
   await prisma.activityLog.deleteMany();
@@ -22,13 +28,13 @@ async function main() {
   await prisma.setting.deleteMany();
 
   for (const user of initialData.users) {
-    const credential = demoCredentials.find((item) => item.email === user.email);
+    const credential = seedCredentials.find((item) => item.email === user.email);
     await prisma.user.create({
       data: {
         id: user.id,
         name: user.name,
         email: user.email,
-        passwordHash: credential ? await bcrypt.hash(credential.password, 12) : undefined,
+        passwordHash: credential?.password ? await bcrypt.hash(credential.password, 12) : undefined,
         role: user.role,
         title: user.title,
         phone: user.phone,
