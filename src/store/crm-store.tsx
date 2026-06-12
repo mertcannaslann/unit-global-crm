@@ -43,7 +43,7 @@ function normalizeData(saved: CrmData): CrmData {
     ...saved,
     clients,
     users: saved.users.map((user) => (user.role === "ADMIN" || user.clientId ? user : { ...user, clientId: clients[0]?.id })),
-    leads: saved.leads.map((lead) => ({ ...lead, customerType: lead.customerType ?? "KIRACI" })),
+    leads: saved.leads.map((lead) => ({ ...lead, customerType: lead.customerType ?? "KIRACI", tenantStatus: lead.tenantStatus ?? "BILINMIYOR" })),
   };
 }
 
@@ -142,21 +142,46 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         toast.error("İçe aktarılacak müşteri bulunamadı");
         return;
       }
-      setData((current) => ({
-        ...current,
-        leads: [
-          ...cleanLeads.map((lead, index) => ({
-            ...lead,
-            id: `lead-import-${now}-${index}`,
-            status: "YENI_LEAD" as const,
-            customerType: lead.customerType ?? "KIRACI",
-            notes: lead.notes?.trim() || "",
-            createdAt: new Date(now + index).toISOString(),
-          })),
-          ...current.leads,
-        ],
-      }));
-      toast.success(`${sourceName ?? "Dosya"} müşterilere yüklendi`);
+      let addedCount = 0;
+      let updatedCount = 0;
+      setData((current) => {
+        const nextLeads = [...current.leads];
+        const leadsToAdd: Lead[] = [];
+
+        cleanLeads.forEach((lead, index) => {
+          const existingIndex = lead.externalId ? nextLeads.findIndex((item) => item.externalId === lead.externalId) : -1;
+          if (existingIndex >= 0) {
+            const existing = nextLeads[existingIndex];
+            nextLeads[existingIndex] = {
+              ...existing,
+              ...lead,
+              id: existing.id,
+              status: existing.status,
+              createdAt: existing.createdAt,
+              notes: lead.notes?.trim() || existing.notes || "",
+              tenantStatus: existing.tenantStatus ?? lead.tenantStatus ?? "BILINMIYOR",
+              tenantName: existing.tenantName ?? lead.tenantName,
+              tenantMoveIn: existing.tenantMoveIn ?? lead.tenantMoveIn,
+              tenantMoveOut: existing.tenantMoveOut ?? lead.tenantMoveOut,
+            };
+            updatedCount += 1;
+          } else {
+            leadsToAdd.push({
+              ...lead,
+              id: `lead-import-${now}-${index}`,
+              status: "YENI_LEAD",
+              customerType: lead.customerType ?? "MULK_SAHIBI",
+              tenantStatus: lead.tenantStatus ?? "BILINMIYOR",
+              notes: lead.notes?.trim() || "",
+              createdAt: new Date(now + index).toISOString(),
+            });
+            addedCount += 1;
+          }
+        });
+
+        return { ...current, leads: [...leadsToAdd, ...nextLeads] };
+      });
+      toast.success(`${sourceName ?? "Dosya"} işlendi: ${addedCount} yeni, ${updatedCount} güncellendi`);
     },
     addLeadAction: (leadId, userId, note) => {
       const action: LeadAction = {
