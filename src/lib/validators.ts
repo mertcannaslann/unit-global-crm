@@ -28,7 +28,12 @@ export const leadSchema = z.object({
   address: z.string().optional(),
   preferredLocation: z.string().optional(),
   propertyOwner: z.string().optional(),
+  propertyOwnerPhone: z.string().optional(),
   customerType: z.enum(["MULK_SAHIBI", "KIRACI"]).optional(),
+  tenantStatus: z.enum(["VAR", "YOK", "BILINMIYOR"]).optional(),
+  tenantName: z.string().optional(),
+  tenantMoveIn: z.string().optional(),
+  tenantMoveOut: z.string().optional(),
   notes: z.string().optional(),
   consultantId: z.string().min(1, "Danışman seçilmeli"),
 });
