@@ -8,11 +8,13 @@ import type {
   MarketComparable,
   MarketListing,
   Notification,
+  OfficeClient,
   PriceHistory,
   Property,
   Task,
   User,
 } from "@/lib/types";
+import { UNIT_GLOBAL_LOGO_DATA_URL } from "@/lib/client-assets";
 
 export const demoCredentials = [
   { email: "mertcan@unitcrm.com", password: "Mertcan123!", role: "ADMIN" },
@@ -40,6 +42,7 @@ export const users: User[] = [
     phone: "+90 532 000 10 02",
     avatarColor: "bg-blue-950",
     active: true,
+    clientId: "client-unit-global",
   },
   {
     id: "consultant-1",
@@ -50,6 +53,19 @@ export const users: User[] = [
     phone: "+90 532 000 20 01",
     avatarColor: "bg-blue-900",
     active: true,
+    clientId: "client-unit-global",
+  },
+];
+
+export const clients: OfficeClient[] = [
+  {
+    id: "client-unit-global",
+    name: "Unit Global",
+    ownerName: "Dorukhan Öründü",
+    userLimit: 5,
+    status: "Hazır",
+    logoUrl: UNIT_GLOBAL_LOGO_DATA_URL,
+    createdAt: new Date(2026, 5, 11).toISOString(),
   },
 ];
 
@@ -666,6 +682,7 @@ export const marketListings: MarketListing[] = [
 ];
 
 export const initialData: CrmData = {
+  clients,
   users,
   properties: [],
   leads: [],
