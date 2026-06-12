@@ -144,6 +144,10 @@ function humanize(value?: string) {
     OFIS_SAHIBI: "Ofis Sahibi",
     CONSULTANT: "Danışman",
     ADMIN: "Admin",
+    needsAction: "Yanıt bekliyor",
+    accepted: "Kabul edildi",
+    declined: "Reddedildi",
+    tentative: "Belki",
   };
   return labels[value] ?? value.replaceAll("_", " ");
 }
@@ -1803,14 +1807,98 @@ function TasksPage({ user }: { user: User }) {
 function CalendarPage({ user }: { user: User }) {
   const { data, addTask, updateTask } = useCrm();
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [location, setLocation] = useState("");
+  const [time, setTime] = useState("10:00");
+  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [reminderMinutes, setReminderMinutes] = useState(30);
+  const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [selectedDay, setSelectedDay] = useState(11);
-  const assignees = data.users.filter((item) => item.active && item.role !== "ADMIN");
+  const assignees = canManageOffice(user) ? data.users.filter((item) => item.active && item.role !== "ADMIN") : [user];
   const [assignedToId, setAssignedToId] = useState(assignees[0]?.id ?? user.id);
   const tasks = data.tasks.filter((task) => canSeeOffice(user) || task.assignedToId === user.id);
   const weekdays = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
   const firstOffset = (new Date(2026, 5, 1).getDay() + 6) % 7;
   const calendarCells = [...Array.from({ length: firstOffset }, () => null), ...Array.from({ length: 30 }, (_, index) => index + 1)];
   const dayEvents = (day: number) => tasks.filter((task) => new Date(task.dueDate).getMonth() === 5 && new Date(task.dueDate).getDate() === day);
+  const createCalendarTask = async () => {
+    const assignedUser = assignees.find((item) => item.id === assignedToId) ?? user;
+    if (!title.trim()) {
+      toast.error("Görev başlığı gir.");
+      return;
+    }
+
+    const [hour = "10", minute = "00"] = time.split(":");
+    const start = new Date(2026, 5, selectedDay, Number(hour), Number(minute));
+    const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+    const taskPayload = {
+      title: title.trim(),
+      description: description.trim() || "Takvimden oluşturuldu.",
+      type: "RANDEVU" as const,
+      dueDate: start.toISOString(),
+      endDate: end.toISOString(),
+      location: location.trim(),
+      reminderMinutes,
+      priority: "ORTA" as const,
+      assignedToId: assignedUser.id,
+      createdById: user.id,
+    };
+    const id = addTask(taskPayload);
+    setTitle("");
+    setDescription("");
+    setLocation("");
+
+    try {
+      const response = await fetch("/api/google-calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: { id, ...taskPayload }, attendeeEmail: assignedUser.email }),
+      });
+      const result = await response.json() as { connected?: boolean; eventId?: string; htmlLink?: string; responseStatus?: string; error?: string };
+
+      if (response.status === 409) {
+        toast.info("Görev CRM'e eklendi. Google daveti için danışmanın Google hesabını bağlaması gerekiyor.");
+        return;
+      }
+
+      if (!response.ok) {
+        toast.error(result.error ?? "Google Calendar daveti oluşturulamadı.");
+        return;
+      }
+
+      updateTask(id, {
+        googleCalendarEventId: result.eventId,
+        googleCalendarHtmlLink: result.htmlLink,
+        googleCalendarResponseStatus: result.responseStatus ?? "needsAction",
+      });
+      toast.success("Google Calendar daveti gönderildi");
+    } catch {
+      toast.error("Görev eklendi fakat Google Calendar'a ulaşılamadı.");
+    }
+  };
+  const syncGoogleResponses = async () => {
+    setCalendarSyncing(true);
+    try {
+      const response = await fetch("/api/google-calendar/sync", { method: "POST" });
+      const result = await response.json() as { connected?: boolean; updates?: Array<{ taskId: string; eventId?: string; htmlLink?: string; responseStatus?: string }> };
+      if (response.status === 409) {
+        toast.info("Google Takvim bağlantısı bulunamadı.");
+        return;
+      }
+      if (!response.ok) {
+        toast.error("Google Takvim yanıtları senkronize edilemedi.");
+        return;
+      }
+      (result.updates ?? []).forEach((item) => updateTask(item.taskId, {
+        googleCalendarEventId: item.eventId,
+        googleCalendarHtmlLink: item.htmlLink,
+        googleCalendarResponseStatus: item.responseStatus,
+      }));
+      toast.success(`${result.updates?.length ?? 0} takvim yanıtı senkronize edildi`);
+    } finally {
+      setCalendarSyncing(false);
+    }
+  };
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
@@ -1869,6 +1957,12 @@ function CalendarPage({ user }: { user: User }) {
                   <div>
                     <p className="text-sm font-semibold">{task.title}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Danışman"}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                      {task.googleCalendarHtmlLink ? (
+                        <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1880,8 +1974,35 @@ function CalendarPage({ user }: { user: User }) {
           <SectionTitle title="Takvime Ekle" />
           <div className="space-y-3">
             <Input placeholder="Örn: Bebek yer gösterimi" value={title} onChange={(event) => setTitle(event.target.value)} />
+            <Textarea placeholder="Açıklama / müşteri notu" value={description} onChange={(event) => setDescription(event.target.value)} />
+            <Input placeholder="Konum: Bebek, İstanbul veya açık adres" value={location} onChange={(event) => setLocation(event.target.value)} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
+              <Select value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}>
+                <option value={30}>30 dk</option>
+                <option value={60}>1 saat</option>
+                <option value={90}>1.5 saat</option>
+                <option value={120}>2 saat</option>
+              </Select>
+              <Select value={reminderMinutes} onChange={(event) => setReminderMinutes(Number(event.target.value))}>
+                <option value={15}>15 dk önce</option>
+                <option value={30}>30 dk önce</option>
+                <option value={60}>1 saat önce</option>
+              </Select>
+            </div>
             {canManageOffice(user) ? <Select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}>{assignees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}
-            <Button className="w-full" onClick={() => { addTask({ title, description: "Takvimden oluşturuldu.", type: "RANDEVU", dueDate: new Date(2026, 5, selectedDay, 10).toISOString(), priority: "ORTA", assignedToId, createdById: user.id }); setTitle(""); }}>Takvime Ekle</Button>
+            <Button className="w-full" onClick={createCalendarTask}>Takvime Ekle ve Davet Gönder</Button>
+          </div>
+        </Card>
+        <Card className="p-5">
+          <SectionTitle title="Google Takvim" action={<Badge label="OAuth" />} />
+          <p className="text-sm leading-6 text-muted-foreground">Her danışman kendi Google hesabını bağlar. Görev oluşturulunca davet maili Google tarafından gönderilir.</p>
+          <div className="mt-4 grid gap-2">
+            <Button onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>Google hesabını bağla</Button>
+            <Button variant="outline" disabled={calendarSyncing} onClick={syncGoogleResponses}>
+              <RefreshCw className={`h-4 w-4 ${calendarSyncing ? "animate-spin" : ""}`} />
+              Davet Yanıtlarını Senkronize Et
+            </Button>
           </div>
         </Card>
       </div>
@@ -2307,6 +2428,12 @@ function IntegrationsPage() {
                     Drive Aç
                   </Button>
                 </>
+              ) : null}
+              {integration.key === "googleCalendar" ? (
+                <Button variant="outline" onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>
+                  <CalendarDays className="h-4 w-4" />
+                  Google OAuth ile Bağla
+                </Button>
               ) : null}
             </div>
           </Card>
