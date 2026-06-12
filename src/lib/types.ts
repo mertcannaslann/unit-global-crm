@@ -18,6 +18,17 @@ export type User = {
   phone: string;
   avatarColor: string;
   active: boolean;
+  clientId?: string;
+};
+
+export type OfficeClient = {
+  id: string;
+  name: string;
+  ownerName: string;
+  userLimit: number;
+  status: "Hazır" | "Kurulumda" | "Pasif";
+  logoUrl?: string;
+  createdAt: string;
 };
 
 export type Property = {
@@ -192,6 +203,7 @@ export type Setting = {
 };
 
 export type CrmData = {
+  clients: OfficeClient[];
   users: User[];
   properties: Property[];
   leads: Lead[];
