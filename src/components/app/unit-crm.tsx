@@ -47,7 +47,7 @@ import { initials } from "@/lib/utils";
 import { leadSchema, propertySchema } from "@/lib/validators";
 import { useCrm } from "@/store/crm-store";
 import type { ListingPreview } from "@/services/listing-providers/listing-preview";
-import type { Lead, MarketListing, Property, User } from "@/lib/types";
+import type { CrmData, Lead, MarketListing, OfficeClient, Property, User } from "@/lib/types";
 
 type CrmAppProps = {
   slug: string[];
@@ -107,8 +107,13 @@ function roleLabel(role: User["role"]) {
   return "Danışman";
 }
 
-function workspaceName(user: User) {
-  return user.role === "ADMIN" ? "Unit CRM" : "Unit Global";
+function clientForUser(data: CrmData, user: User) {
+  if (user.role === "ADMIN") return undefined;
+  return data.clients.find((client) => client.id === user.clientId) ?? data.clients[0];
+}
+
+function workspaceName(user: User, client?: OfficeClient) {
+  return user.role === "ADMIN" ? "Unit CRM" : client?.name ?? "Unit Global";
 }
 
 function workspaceSubtitle(user: User) {
@@ -200,13 +205,14 @@ export function CrmApp({ slug }: CrmAppProps) {
   }
 
   const visibleNav = navForUser(user);
+  const activeClient = clientForUser(data, user);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <MobileTopbar onMenu={() => setSidebarOpen(true)} user={user} />
+      <MobileTopbar onMenu={() => setSidebarOpen(true)} user={user} client={activeClient} />
       <div className="flex min-h-screen w-full">
         <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 border-r border-border bg-white px-4 py-4 lg:block">
-          <Sidebar user={user} currentPath={currentPath} nav={visibleNav} />
+          <Sidebar user={user} client={activeClient} currentPath={currentPath} nav={visibleNav} />
         </aside>
 
         <AnimatePresence>
@@ -222,14 +228,14 @@ export function CrmApp({ slug }: CrmAppProps) {
                 <button className="mb-4 ml-auto flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted" onClick={() => setSidebarOpen(false)}>
                   <X className="h-5 w-5" />
                 </button>
-                <Sidebar user={user} currentPath={currentPath} nav={visibleNav} onNavigate={() => setSidebarOpen(false)} />
+                <Sidebar user={user} client={activeClient} currentPath={currentPath} nav={visibleNav} onNavigate={() => setSidebarOpen(false)} />
               </motion.aside>
             </motion.div>
           ) : null}
         </AnimatePresence>
 
         <main className="min-w-0 flex-1 px-4 py-5 md:px-7 lg:px-8">
-          <PageHeader slug={slug} user={user} />
+          <PageHeader slug={slug} user={user} client={activeClient} />
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <RouteRenderer slug={slug} user={user} />
           </motion.div>
@@ -250,30 +256,30 @@ function LoadingScreen() {
   );
 }
 
-function MobileTopbar({ onMenu, user }: { onMenu: () => void; user: User }) {
+function MobileTopbar({ onMenu, user, client }: { onMenu: () => void; user: User; client?: OfficeClient }) {
+  const name = workspaceName(user, client);
   return (
     <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
       <Button variant="ghost" size="icon" onClick={onMenu}>
         <Menu className="h-5 w-5" />
       </Button>
       <div className="flex items-center gap-2 text-sm font-semibold">
-        <Building2 className="h-4 w-4 text-primary" />
-        {workspaceName(user)}
+        <ClientLogoMark client={client} fallbackName={name} compact />
+        {!client?.logoUrl ? name : null}
       </div>
       <Avatar user={user} />
     </div>
   );
 }
 
-function Sidebar({ user, currentPath, nav, onNavigate }: { user: User; currentPath: string; nav: typeof navItems; onNavigate?: () => void }) {
+function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; client?: OfficeClient; currentPath: string; nav: typeof navItems; onNavigate?: () => void }) {
+  const name = workspaceName(user, client);
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-7 flex items-center gap-3 px-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-950 text-white">
-          <Building2 className="h-5 w-5" />
-        </div>
+      <div className={`mb-7 px-2 ${client?.logoUrl ? "space-y-2" : "flex items-center gap-3"}`}>
+        <ClientLogoMark client={client} fallbackName={name} />
         <div>
-          <p className="text-base font-semibold">{workspaceName(user)}</p>
+          {!client?.logoUrl ? <p className="text-base font-semibold">{name}</p> : null}
           <p className="text-xs text-muted-foreground">{workspaceSubtitle(user)}</p>
         </div>
       </div>
@@ -319,7 +325,24 @@ function Avatar({ user }: { user: User }) {
   return <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${user.avatarColor} text-xs font-semibold text-white`}>{initials(user.name)}</div>;
 }
 
-function PageHeader({ slug, user }: { slug: string[]; user: User }) {
+function ClientLogoMark({ client, fallbackName, compact = false }: { client?: OfficeClient; fallbackName: string; compact?: boolean }) {
+  if (client?.logoUrl) {
+    return (
+      <div className={`flex shrink-0 items-center ${compact ? "h-8 max-w-36" : "h-11 max-w-[178px]"}`}>
+        <img src={client.logoUrl} alt={`${client.name} logosu`} className="max-h-full max-w-full object-contain" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex shrink-0 items-center justify-center rounded-md bg-slate-950 text-white ${compact ? "h-8 w-8" : "h-9 w-9"}`}>
+      <Building2 className={compact ? "h-4 w-4" : "h-5 w-5"} />
+      <span className="sr-only">{fallbackName}</span>
+    </div>
+  );
+}
+
+function PageHeader({ slug, user, client }: { slug: string[]; user: User; client?: OfficeClient }) {
   const { data, markNotificationRead } = useCrm();
   const [notificationOpen, setNotificationOpen] = useState(false);
   const todayLabel = useMemo(() => formatTurkishDate(new Date()), []);
@@ -346,7 +369,7 @@ function PageHeader({ slug, user }: { slug: string[]; user: User }) {
     <header className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{workspaceName(user)} · {roleLabel(user.role)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{workspaceName(user, client)} · {roleLabel(user.role)}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="rounded-md border border-border bg-white px-3 py-2 text-sm text-muted-foreground">Bugün: {todayLabel}</div>
@@ -432,33 +455,65 @@ function AccessDenied() {
 }
 
 function PlatformAdminDashboard({ user }: { user: User }) {
-  const { data } = useCrm();
+  const { data, upsertClient } = useCrm();
   const [officeName, setOfficeName] = useState("Unit Global");
   const [ownerName, setOwnerName] = useState("Dorukhan Öründü");
   const [ownerEmail, setOwnerEmail] = useState("dorukhan@unitglobal.com");
   const [consultantCount, setConsultantCount] = useState(1);
+  const [clientLogoUrl, setClientLogoUrl] = useState(data.clients.find((client) => client.id === "client-unit-global")?.logoUrl ?? "");
   const officeMemberList = officeUsers(data.users);
   const [generatedAccounts, setGeneratedAccounts] = useState([
     { role: "Ofis Sahibi", name: "Dorukhan Öründü", email: "dorukhan@unitglobal.com", password: "Owner123!" },
     { role: "Danışman", name: "Kaan Öründü", email: "kaan@unitglobal.com", password: "Consultant123!" },
   ]);
-  const offices = [
-    {
-      id: "office-unit-global",
-      name: "Unit Global",
-      owner: data.users.find((item) => item.role === "OFFICE_MANAGER")?.name ?? "Dorukhan Öründü",
-      status: "Hazır",
-      users: officeMemberList.length,
-      userLimit: OFFICE_USER_LIMIT,
-      properties: data.properties.length,
-      leads: data.leads.length,
-    },
-  ];
+  const offices = data.clients.map((client) => {
+    const members = data.users.filter((item) => item.clientId === client.id && item.role !== "ADMIN");
+    const isUnitGlobal = client.id === "client-unit-global";
+    return {
+      ...client,
+      owner: client.ownerName,
+      users: members.length || (isUnitGlobal ? officeMemberList.length : 0),
+      userLimit: client.userLimit,
+      properties: isUnitGlobal ? data.properties.length : 0,
+      leads: isUnitGlobal ? data.leads.length : 0,
+    };
+  });
   const slug = officeName.toLocaleLowerCase("tr").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c").replace(/[^a-z0-9]+/g, "").slice(0, 18) || "ofis";
+  const clientId = slug === "unitglobal" ? "client-unit-global" : `client-${slug}`;
+
+  function handleClientLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Logo için PNG, JPG, WebP veya SVG yükle.");
+      return;
+    }
+    if (file.size > 1.5 * 1024 * 1024) {
+      toast.error("Logo dosyası 1.5 MB altında olmalı.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setClientLogoUrl(String(reader.result));
+      toast.success("Logo yüklendi");
+    };
+    reader.onerror = () => toast.error("Logo okunamadı.");
+    reader.readAsDataURL(file);
+  }
 
   function generateOfficeAccounts() {
     const maxConsultants = OFFICE_USER_LIMIT - 1;
     const count = Math.max(1, Math.min(maxConsultants, consultantCount));
+    upsertClient({
+      id: clientId,
+      name: officeName || "Yeni Ofis",
+      ownerName: ownerName || "Ofis Sahibi",
+      userLimit: OFFICE_USER_LIMIT,
+      status: "Hazır",
+      logoUrl: clientLogoUrl || undefined,
+    });
     const accounts = [
       {
         role: "Ofis Sahibi",
@@ -508,6 +563,25 @@ function PlatformAdminDashboard({ user }: { user: User }) {
             <Field label="Ofis adı"><Input value={officeName} onChange={(event) => setOfficeName(event.target.value)} /></Field>
             <Field label="Ofis sahibi"><Input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} /></Field>
             <Field label="Owner e-posta"><Input value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} /></Field>
+            <Field label="Müşteri logosu">
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-slate-50 p-3">
+                <div className="flex h-14 w-32 shrink-0 items-center justify-center rounded-md border border-border bg-white p-2">
+                  {clientLogoUrl ? (
+                    <img src={clientLogoUrl} alt={`${officeName} logosu`} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <Building2 className="h-6 w-6 text-primary" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-950/10 hover:bg-primary/90">
+                    <Upload className="h-4 w-4" />
+                    Logo Yükle
+                    <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleClientLogoUpload} />
+                  </label>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">Logo yoksa sol menüde mevcut bina ikonu kullanılır.</p>
+                </div>
+              </div>
+            </Field>
             <Field label="Danışman sayısı">
               <Input
                 type="number"
@@ -570,7 +644,18 @@ function PlatformAdminDashboard({ user }: { user: User }) {
               <tbody className="divide-y divide-border">
                 {offices.map((office) => (
                   <tr key={office.id} className="bg-white hover:bg-slate-50">
-                    <td className="px-5 py-4 font-medium">{office.name}</td>
+                    <td className="px-5 py-4 font-medium">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-24 shrink-0 items-center justify-center rounded-md border border-border bg-white p-2">
+                          {office.logoUrl ? (
+                            <img src={office.logoUrl} alt={`${office.name} logosu`} className="max-h-full max-w-full object-contain" />
+                          ) : (
+                            <Building2 className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <span>{office.name}</span>
+                      </div>
+                    </td>
                     <td className="px-5 py-4">{office.owner}</td>
                     <td className="px-5 py-4">{office.users}/{office.userLimit}</td>
                     <td className="px-5 py-4">{office.properties}</td>
@@ -2509,6 +2594,7 @@ function SettingsPage({ user }: { user: User }) {
       phone: newUserPhone.trim() || "Telefon girilecek",
       role: "CONSULTANT",
       title: "Gayrimenkul Danışmanı",
+      clientId: user.clientId ?? data.clients[0]?.id,
     });
     setNewUserName("");
     setNewUserEmail("");
@@ -2521,7 +2607,7 @@ function SettingsPage({ user }: { user: User }) {
         <Card className="p-5">
           <SectionTitle title="Platform Ayarları" />
           <div className="grid gap-4 md:grid-cols-3">
-            <Metric label="Müşteri ofisi" value="1" detail="Unit Global aktif" />
+            <Metric label="Müşteri ofisi" value={data.clients.length.toString()} detail="Aktif müşteri paneli" />
             <Metric label="Toplam kullanıcı" value={members.length.toString()} detail={`${OFFICE_USER_LIMIT} kullanıcı limitli ofis`} />
             <Metric label="Aktif panel" value="3" detail="Admin, owner, danışman" />
           </div>
