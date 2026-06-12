@@ -8,6 +8,7 @@ import { signOut, useSession } from "next-auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { useForm } from "react-hook-form";
+import type { z } from "zod";
 import {
   Bell,
   Building2,
@@ -61,6 +62,8 @@ type GoogleCalendarStatus = {
   calendarId?: string;
   updatedAt?: string | null;
 };
+
+type LeadFormValues = z.infer<typeof leadSchema>;
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
@@ -1626,6 +1629,9 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
     "evsahibi",
     "fullname",
     "gsm",
+    "aboneno",
+    "accountid",
+    "accountno",
     "id",
     "isim",
     "kayitno",
@@ -1643,6 +1649,7 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
     "notlar",
     "notes",
     "owner",
+    "phoneno",
     "phone",
     "propertyowner",
     "remark",
@@ -1674,7 +1681,7 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
     budget: hasHeader ? findIndex(["butce", "budget", "bütçe"]) : 4,
     interest: hasHeader ? findIndex(["ilgi", "interest", "talep", "request", "requirement", "want", "need", "not"]) : 5,
     notes: hasHeader ? findIndex(["notlar", "not", "notes", "note", "aciklama", "aciklamalar", "comment", "comments", "remark", "remarks"]) : 6,
-    externalId: hasHeader ? findIndex(["id", "musteriid", "musterino", "kayitno", "recordid", "customerid", "clientid"]) : 7,
+    externalId: hasHeader ? findIndex(["id", "aboneno", "accountid", "accountno", "musteriid", "musterino", "kayitno", "recordid", "customerid", "clientid"]) : 7,
     address: hasHeader ? findIndex(["adres", "address", "lokasyon", "konum", "location", "fulladdress"]) : 8,
     district: hasHeader ? findIndex(["semt", "bolge", "mahalle", "ilce", "district", "neighborhood", "area", "region"]) : 11,
     propertyOwner: hasHeader ? findIndex(["mulksahibi", "malik", "propertyowner", "owner", "evsahibi", "landlord"]) : 9,
@@ -1683,29 +1690,31 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
 
   const importedLeads = bodyRows
     .map<LeadImportPayload | null>((row, index) => {
-      const propertyOwner = valueAt(row, indexMap.propertyOwner);
-      const externalId = valueAt(row, indexMap.externalId);
+      const propertyOwnerCell = valueAt(row, indexMap.propertyOwner);
+      const propertyOwnerPhone = extractPhone(propertyOwnerCell) || extractPhone(valueAt(row, indexMap.phone));
+      const propertyOwner = cleanContactName(propertyOwnerCell);
+      const externalId = cleanNumericId(valueAt(row, indexMap.externalId));
       const address = valueAt(row, indexMap.address);
       const notes = valueAt(row, indexMap.notes);
       const district = valueAt(row, indexMap.district) || extractDistrictFromAddress(address);
       const rawName = valueAt(row, indexMap.name);
-      const cleanOwnerName = cleanContactName(propertyOwner);
-      const phone = valueAt(row, indexMap.phone) || extractPhone(propertyOwner) || "Telefon girilecek";
-      const customerType = inferCustomerType(valueAt(row, indexMap.customerType), propertyOwner, notes);
-      const hasRecordSignal = Boolean(rawName || propertyOwner || externalId || address || valueAt(row, indexMap.phone) || valueAt(row, indexMap.email));
+      const customerType = "MULK_SAHIBI" as const;
+      const hasRecordSignal = Boolean((externalId || address || propertyOwner) && (address || propertyOwner || propertyOwnerPhone));
       if (!hasRecordSignal) return null;
-      const name = rawName || cleanOwnerName || externalId || address || `No Name ${index + 1}`;
+      const name = rawName || propertyOwner || (externalId ? `ID ${externalId}` : "") || address || `Kayıt ${index + 1}`;
       return {
         name,
-        externalId: externalId || `M-${String(index + 1).padStart(4, "0")}`,
-        phone,
-        email: valueAt(row, indexMap.email) || `musteri-${Date.now()}-${index + 1}@unitcrm.local`,
+        externalId,
+        phone: propertyOwnerPhone,
+        email: valueAt(row, indexMap.email),
         source: valueAt(row, indexMap.source) || "Excel aktarımı",
         budget: parseBudget(valueAt(row, indexMap.budget)),
         interest: valueAt(row, indexMap.interest) || address || notes || "Genel müşteri kaydı",
         address,
         propertyOwner,
+        propertyOwnerPhone,
         customerType,
+        tenantStatus: "BILINMIYOR",
         preferredLocation: district,
         notes,
         consultantId,
@@ -1748,6 +1757,11 @@ function valueAt(row: unknown[], index: number) {
   return index >= 0 ? String(row[index] ?? "").trim() : "";
 }
 
+function cleanNumericId(value: unknown) {
+  const digits = String(value ?? "").replace(/[^\d]/g, "");
+  return digits;
+}
+
 function parseBudget(value: unknown) {
   const digits = String(value ?? "").replace(/[^\d]/g, "");
   return digits ? Number(digits) : 0;
@@ -1762,22 +1776,29 @@ function cleanContactName(value: unknown) {
   return String(value ?? "").replace(/(?:\+?90\s*)?(?:0\s*)?5\d(?:[\s().-]*\d){8}|\d(?:[\s().-]*\d){9,10}/g, "").replace(/\s+/g, " ").trim();
 }
 
+function tenantSummary(lead: Lead) {
+  if (lead.tenantStatus === "VAR") return lead.tenantName ? `Var: ${lead.tenantName}` : "Var";
+  if (lead.tenantStatus === "YOK") return "Yok";
+  return "Belirtilmedi";
+}
+
 function exportLeadsToExcel(leads: Lead[], users: User[]) {
   if (!leads.length) {
     toast.error("Dışa aktarılacak müşteri bulunamadı");
     return;
   }
 
-  const headers = ["ID", "Mülk Sahibi", "Adres", "Semt", "Müşteri Tipi", "Müşteri", "Telefon", "E-posta", "Danışman", "Durum", "Notlar"];
+  const headers = ["ID", "Mülk Sahibi", "Telefon", "Adres", "Semt", "Kiracı Bilgisi", "Kiracı Adı", "Giriş Tarihi", "Çıkış Tarihi", "Danışman", "Durum", "Notlar"];
   const rows = leads.map((lead) => [
     lead.externalId || lead.id,
     lead.propertyOwner || lead.name || "",
+    lead.propertyOwnerPhone || lead.phone || "",
     lead.address || "",
     lead.preferredLocation || extractDistrictFromAddress(lead.address) || "",
-    humanize(lead.customerType ?? "KIRACI"),
-    lead.name,
-    lead.phone,
-    lead.email,
+    tenantSummary(lead),
+    lead.tenantName || "",
+    lead.tenantMoveIn || "",
+    lead.tenantMoveOut || "",
     users.find((item) => item.id === lead.consultantId)?.name ?? "",
     humanize(lead.status),
     lead.notes || "",
@@ -1805,23 +1826,6 @@ function escapeExcelCell(value: unknown) {
     .replace(/\r?\n/g, "<br/>");
 }
 
-function inferCustomerType(value: unknown, propertyOwner: unknown, notes: unknown): NonNullable<Lead["customerType"]> {
-  const explicitType = detectCustomerType(value);
-  if (explicitType) return explicitType;
-  const noteType = detectCustomerType(notes);
-  if (noteType) return noteType;
-  if (propertyOwner) return "MULK_SAHIBI";
-  return "KIRACI";
-}
-
-function detectCustomerType(value: unknown): Lead["customerType"] | undefined {
-  const normalized = normalizeHeader(value);
-  if (!normalized) return undefined;
-  if (normalized.includes("mulksahibi") || ["malik", "owner", "propertyowner", "evsahibi", "landlord", "homeowner", "seller"].includes(normalized)) return "MULK_SAHIBI";
-  if (normalized.includes("kiraci") || ["tenant", "renter", "buyer", "client", "customer"].includes(normalized)) return "KIRACI";
-  return undefined;
-}
-
 function LeadsPage({ user }: { user: User }) {
   const { data, addLead, importLeads, addLeadAction, updateLead } = useCrm();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -1829,7 +1833,7 @@ function LeadsPage({ user }: { user: User }) {
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
   const firstConsultantId = data.users.find((item) => item.role === "CONSULTANT")?.id ?? user.id;
-  const defaultLeadValues = {
+  const defaultLeadValues: LeadFormValues = {
     name: "",
     externalId: "",
     email: "",
@@ -1840,11 +1844,16 @@ function LeadsPage({ user }: { user: User }) {
     address: "",
     preferredLocation: "",
     propertyOwner: "",
+    propertyOwnerPhone: "",
     customerType: "KIRACI" as const,
+    tenantStatus: "BILINMIYOR",
+    tenantName: "",
+    tenantMoveIn: "",
+    tenantMoveOut: "",
     notes: "",
     consultantId: canManageOffice(user) ? firstConsultantId : user.id,
   };
-  const form = useForm({ resolver: zodResolver(leadSchema), defaultValues: defaultLeadValues });
+  const form = useForm<LeadFormValues>({ resolver: zodResolver(leadSchema), defaultValues: defaultLeadValues });
   const watchedAddress = form.watch("address");
   const leads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && `${lead.name} ${lead.externalId ?? ""} ${lead.address ?? ""} ${lead.preferredLocation ?? ""} ${lead.propertyOwner ?? ""} ${lead.notes} ${lead.interest}`.toLowerCase().includes(query.toLowerCase()));
   const consultants = data.users.filter((item) => item.role === "CONSULTANT");
@@ -1988,10 +1997,10 @@ function LeadsPage({ user }: { user: User }) {
               <tr>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">ID</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Mülk Sahibi</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Telefon</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Adres</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Semt</th>
-                <th className="border border-slate-300 px-3 py-2 font-semibold">Müşteri Tipi</th>
-                <th className="border border-slate-300 px-3 py-2 font-semibold">Müşteri</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Kiracı Bilgisi</th>
                 <th className="hidden border border-slate-300 px-3 py-2 font-semibold xl:table-cell">Danışman</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Durum</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Notlar</th>
@@ -2001,11 +2010,11 @@ function LeadsPage({ user }: { user: User }) {
               {leads.map((lead) => (
                 <tr key={lead.id} className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]" onClick={() => setSelectedLead(lead)}>
                   <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.externalId || lead.id}</td>
-                  <td className="max-w-[240px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950">{lead.propertyOwner || lead.name || "-"}</td>
+                  <td className="max-w-[240px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950"><Link href={`/musteriler/${lead.id}`}>{lead.propertyOwner || lead.name || "-"}</Link></td>
+                  <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.propertyOwnerPhone || lead.phone || "-"}</td>
                   <td className="max-w-[420px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-slate-800">{lead.address || "-"}</td>
                   <td className="border border-slate-200 px-3 py-2 text-slate-800">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
-                  <td className="border border-slate-200 px-3 py-2"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
-                  <td className="max-w-[220px] border border-slate-200 px-3 py-2 font-medium text-slate-900"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
+                  <td className="border border-slate-200 px-3 py-2"><Badge label={tenantSummary(lead)} /></td>
                   <td className="hidden border border-slate-200 px-3 py-2 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
                   <td className="border border-slate-200 px-3 py-2"><Badge label={lead.status} /></td>
                   <td className="max-w-[320px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-muted-foreground">{lead.notes || "-"}</td>
@@ -2026,10 +2035,11 @@ function LeadsPage({ user }: { user: User }) {
           <SectionTitle title={selectedLead.name} action={<Badge label={selectedLead.status} />} />
           <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
             <InfoRow label="ID" value={selectedLead.externalId || selectedLead.id} />
-            <InfoRow label="Müşteri Tipi" value={humanize(selectedLead.customerType ?? "KIRACI")} />
+            <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
+            <InfoRow label="Telefon" value={selectedLead.propertyOwnerPhone || selectedLead.phone || "-"} />
             <InfoRow label="Adres" value={selectedLead.address || "-"} />
             <InfoRow label="Semt" value={selectedLead.preferredLocation || extractDistrictFromAddress(selectedLead.address) || "-"} />
-            <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
+            <InfoRow label="Kiracı Bilgisi" value={tenantSummary(selectedLead)} />
           </div>
           <p className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">{selectedLead.notes}</p>
           <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
@@ -2052,6 +2062,19 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
   const { data, updateLead, addLeadAction } = useCrm();
   const [note, setNote] = useState("");
   const lead = data.leads.find((item) => item.id === leadId);
+  const [tenantStatus, setTenantStatus] = useState<NonNullable<Lead["tenantStatus"]>>(lead?.tenantStatus ?? "BILINMIYOR");
+  const [tenantName, setTenantName] = useState(lead?.tenantName ?? "");
+  const [tenantMoveIn, setTenantMoveIn] = useState(lead?.tenantMoveIn ?? "");
+  const [tenantMoveOut, setTenantMoveOut] = useState(lead?.tenantMoveOut ?? "");
+
+  useEffect(() => {
+    if (!lead) return;
+    setTenantStatus(lead.tenantStatus ?? "BILINMIYOR");
+    setTenantName(lead.tenantName ?? "");
+    setTenantMoveIn(lead.tenantMoveIn ?? "");
+    setTenantMoveOut(lead.tenantMoveOut ?? "");
+  }, [lead]);
+
   if (!lead) return <Card className="p-8">Müşteri bulunamadı.</Card>;
   if (!canSeeOffice(user) && lead.consultantId !== user.id) return <AccessDenied />;
 
@@ -2067,8 +2090,8 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
             <div>
               <Badge label={lead.status} />
-              <h2 className="mt-3 text-2xl font-semibold text-slate-950">{lead.name}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{lead.phone} · {lead.email}</p>
+              <h2 className="mt-3 text-2xl font-semibold text-slate-950">{lead.propertyOwner || lead.name}</h2>
+              <p className="mt-2 text-sm text-muted-foreground">{lead.propertyOwnerPhone || lead.phone || "Telefon yok"} · {lead.address || "Adres yok"}</p>
             </div>
             <Select className="md:w-56" value={lead.status} onChange={(event) => updateLead(lead.id, { status: event.target.value as Lead["status"] })}>
               {leadStages.map((stage) => <option key={stage} value={stage}>{humanize(stage)}</option>)}
@@ -2076,11 +2099,47 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <InfoBox label="ID" value={lead.externalId || lead.id} />
-            <InfoBox label="Müşteri Tipi" value={humanize(lead.customerType ?? "KIRACI")} />
+            <InfoBox label="Mülk Sahibi" value={lead.propertyOwner || "-"} />
+            <InfoBox label="Telefon" value={lead.propertyOwnerPhone || lead.phone || "-"} />
             <InfoBox label="Adres" value={lead.address || lead.preferredLocation || "-"} />
             <InfoBox label="Semt" value={lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"} />
-            <InfoBox label="Mülk Sahibi" value={lead.propertyOwner || "-"} />
+            <InfoBox label="Kiracı" value={tenantSummary(lead)} />
             <InfoBox label="Danışman" value={consultant?.name ?? "Atanmadı"} />
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <SectionTitle title="Kiracı Bilgisi" action={<Badge label={tenantSummary(lead)} />} />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Field label="Durum">
+              <Select value={tenantStatus} onChange={(event) => setTenantStatus(event.target.value as NonNullable<Lead["tenantStatus"]>)}>
+                <option value="BILINMIYOR">Belirtilmedi</option>
+                <option value="VAR">Kiracı var</option>
+                <option value="YOK">Kiracı yok</option>
+              </Select>
+            </Field>
+            <Field label="Kiracı isim soyisim">
+              <Input value={tenantName} onChange={(event) => setTenantName(event.target.value)} placeholder="İsim soyisim" disabled={tenantStatus === "YOK"} />
+            </Field>
+            <Field label="Giriş tarihi">
+              <Input type="date" value={tenantMoveIn} onChange={(event) => setTenantMoveIn(event.target.value)} disabled={tenantStatus === "YOK"} />
+            </Field>
+            <Field label="Çıkış tarihi">
+              <Input type="date" value={tenantMoveOut} onChange={(event) => setTenantMoveOut(event.target.value)} disabled={tenantStatus === "YOK"} />
+            </Field>
+            <div className="flex items-end">
+              <Button
+                className="w-full"
+                onClick={() => updateLead(lead.id, {
+                  tenantStatus,
+                  tenantName: tenantStatus === "YOK" ? "" : tenantName,
+                  tenantMoveIn: tenantStatus === "YOK" ? "" : tenantMoveIn,
+                  tenantMoveOut: tenantStatus === "YOK" ? "" : tenantMoveOut,
+                })}
+              >
+                Kiracı Bilgisini Kaydet
+              </Button>
+            </div>
           </div>
         </Card>
 
