@@ -1603,7 +1603,7 @@ function parseLeadImport(text: string, consultantId: string): LeadImportPayload[
   return parseLeadRows(parseDelimitedRows(text), consultantId);
 }
 
-function parseLeadRows(rows: string[][], consultantId: string): LeadImportPayload[] {
+function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPayload[] {
   if (!rows.length) return [];
   const header = rows[0].map(normalizeHeader);
   const knownHeaders = [
@@ -1692,8 +1692,8 @@ function splitDelimitedLine(line: string, delimiter: string) {
   return cells;
 }
 
-function normalizeHeader(value: string) {
-  return value.toLocaleLowerCase("tr").replace(/[ğ]/g, "g").replace(/[ü]/g, "u").replace(/[ş]/g, "s").replace(/[ı]/g, "i").replace(/[ö]/g, "o").replace(/[ç]/g, "c").replace(/[^a-z0-9]/g, "");
+function normalizeHeader(value: unknown) {
+  return String(value ?? "").toLocaleLowerCase("tr").replace(/[ğ]/g, "g").replace(/[ü]/g, "u").replace(/[ş]/g, "s").replace(/[ı]/g, "i").replace(/[ö]/g, "o").replace(/[ç]/g, "c").replace(/[^a-z0-9]/g, "");
 }
 
 function extractDistrictFromAddress(address?: string) {
@@ -1701,16 +1701,16 @@ function extractDistrictFromAddress(address?: string) {
   return istanbulDistrictOptions.find((district) => normalizedAddress.includes(normalizeHeader(district))) ?? "";
 }
 
-function valueAt(row: string[], index: number) {
-  return index >= 0 ? row[index]?.trim() ?? "" : "";
+function valueAt(row: unknown[], index: number) {
+  return index >= 0 ? String(row[index] ?? "").trim() : "";
 }
 
-function parseBudget(value: string) {
-  const digits = value.replace(/[^\d]/g, "");
+function parseBudget(value: unknown) {
+  const digits = String(value ?? "").replace(/[^\d]/g, "");
   return digits ? Number(digits) : 0;
 }
 
-function normalizeCustomerType(value: string): Lead["customerType"] {
+function normalizeCustomerType(value: unknown): Lead["customerType"] {
   const normalized = normalizeHeader(value);
   if (["mulksahibi", "malik", "owner", "propertyowner", "evsahibi"].includes(normalized)) return "MULK_SAHIBI";
   if (["kiraci", "tenant", "renter"].includes(normalized)) return "KIRACI";
