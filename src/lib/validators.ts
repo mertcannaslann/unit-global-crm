@@ -26,6 +26,7 @@ export const leadSchema = z.object({
   budget: z.coerce.number().min(0, "Bütçe negatif olamaz"),
   interest: z.string().min(3, "İlgi alanı girilmeli"),
   address: z.string().optional(),
+  preferredLocation: z.string().optional(),
   propertyOwner: z.string().optional(),
   customerType: z.enum(["MULK_SAHIBI", "KIRACI"]).optional(),
   notes: z.string().optional(),
