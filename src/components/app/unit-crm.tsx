@@ -106,6 +106,14 @@ function roleLabel(role: User["role"]) {
   return "Danışman";
 }
 
+function calendarEmailForUser(user: User) {
+  return user.calendarEmail || user.email;
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function clientForUser(data: CrmData, user: User) {
   if (user.role === "ADMIN") return undefined;
   return data.clients.find((client) => client.id === user.clientId) ?? data.clients[0];
@@ -1996,7 +2004,7 @@ function CalendarPage({ user }: { user: User }) {
       const response = await fetch("/api/google-calendar/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: { id, ...taskPayload }, attendeeEmail: assignedUser.email }),
+        body: JSON.stringify({ task: { id, ...taskPayload }, attendeeEmail: calendarEmailForUser(assignedUser) }),
       });
       const result = await response.json() as { connected?: boolean; eventId?: string; htmlLink?: string; responseStatus?: string; error?: string };
 
@@ -2023,7 +2031,19 @@ function CalendarPage({ user }: { user: User }) {
   const syncGoogleResponses = async () => {
     setCalendarSyncing(true);
     try {
-      const response = await fetch("/api/google-calendar/sync", { method: "POST" });
+      const attendeesByTaskId = Object.fromEntries(
+        tasks
+          .filter((task) => task.googleCalendarEventId)
+          .map((task) => {
+            const assignedUser = data.users.find((item) => item.id === task.assignedToId) ?? user;
+            return [task.id, calendarEmailForUser(assignedUser)];
+          }),
+      );
+      const response = await fetch("/api/google-calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attendeesByTaskId }),
+      });
       const result = await response.json() as { connected?: boolean; updates?: Array<{ taskId: string; eventId?: string; htmlLink?: string; responseStatus?: string }> };
       if (response.status === 409) {
         toast.info("Google Takvim bağlantısı bulunamadı.");
@@ -2600,7 +2620,26 @@ function SettingsPage({ user }: { user: User }) {
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPhone, setNewUserPhone] = useState("");
+  const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
   const remainingSlots = Math.max(OFFICE_USER_LIMIT - members.length, 0);
+  const saveCalendarEmail = (member: User) => {
+    const email = (emailDrafts[member.id] ?? calendarEmailForUser(member)).trim().toLowerCase();
+    if (!email || !isValidEmail(email)) {
+      toast.error("Geçerli bir davet e-postası gir.");
+      return;
+    }
+    const exists = data.users.some((item) => item.id !== member.id && [item.email, calendarEmailForUser(item)].some((candidate) => candidate.toLowerCase() === email));
+    if (exists) {
+      toast.error("Bu e-posta başka bir kullanıcıda kayıtlı.");
+      return;
+    }
+    updateUser(member.id, { calendarEmail: email });
+    setEmailDrafts((current) => {
+      const next = { ...current };
+      delete next[member.id];
+      return next;
+    });
+  };
   const createUser = () => {
     const email = newUserEmail.trim().toLowerCase();
     const name = newUserName.trim();
@@ -2612,13 +2651,14 @@ function SettingsPage({ user }: { user: User }) {
       toast.error(`${OFFICE_USER_LIMIT} kullanıcı limiti dolu.`);
       return;
     }
-    if (data.users.some((item) => item.email.toLowerCase() === email)) {
+    if (data.users.some((item) => [item.email, calendarEmailForUser(item)].some((candidate) => candidate.toLowerCase() === email))) {
       toast.error("Bu e-posta ile bir kullanıcı zaten var.");
       return;
     }
     addUser({
       name,
       email,
+      calendarEmail: email,
       phone: newUserPhone.trim() || "Telefon girilecek",
       role: "CONSULTANT",
       title: "Gayrimenkul Danışmanı",
@@ -2679,11 +2719,15 @@ function SettingsPage({ user }: { user: User }) {
       </Card>
       <Card className="p-5">
         <SectionTitle title="Ekip Kullanıcıları" />
+        <p className="mb-4 rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
+          Davet e-postası Google Calendar davetleri ve ekip bildirimleri için kullanılır. Demo giriş kullanıcı adları sabit kalır.
+        </p>
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Kullanıcı</th>
+                <th className="px-4 py-3 font-semibold">Davet e-postası</th>
                 <th className="px-4 py-3 font-semibold">Rol</th>
                 <th className="px-4 py-3 font-semibold">Telefon</th>
                 <th className="px-4 py-3 font-semibold">Durum</th>
@@ -2698,8 +2742,20 @@ function SettingsPage({ user }: { user: User }) {
                       <Avatar user={member} />
                       <div>
                         <p className="font-medium text-slate-950">{member.name}</p>
-                        <p className="text-xs text-muted-foreground">{member.email}</p>
+                        <p className="text-xs text-muted-foreground">Giriş: {member.email}</p>
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex min-w-[260px] gap-2">
+                      <Input
+                        type="email"
+                        value={emailDrafts[member.id] ?? calendarEmailForUser(member)}
+                        onChange={(event) => setEmailDrafts((current) => ({ ...current, [member.id]: event.target.value }))}
+                      />
+                      <Button size="sm" variant="outline" onClick={() => saveCalendarEmail(member)}>
+                        Kaydet
+                      </Button>
                     </div>
                   </td>
                   <td className="px-4 py-3">{roleLabel(member.role)}</td>
