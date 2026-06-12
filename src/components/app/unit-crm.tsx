@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ClipboardList,
   CalendarDays,
+  Download,
   ExternalLink,
   FileSpreadsheet,
   FolderOpen,
@@ -1605,7 +1606,6 @@ function parseLeadImport(text: string, consultantId: string): LeadImportPayload[
 
 function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPayload[] {
   if (!rows.length) return [];
-  const header = rows[0].map(normalizeHeader);
   const knownHeaders = [
     "ad",
     "adsoyad",
@@ -1653,8 +1653,18 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
     "telephone",
     "type",
   ];
-  const hasHeader = header.some((cell) => knownHeaders.includes(cell));
-  const bodyRows = hasHeader ? rows.slice(1) : rows;
+  const knownHeaderSet = new Set(knownHeaders);
+  const requiredHeaderSet = new Set(["id", "adres", "address", "mulksahibi", "propertyowner", "notes", "notlar"]);
+  const headerCandidates = rows.slice(0, 30).map((row, index) => {
+    const normalized = row.map(normalizeHeader);
+    const knownCount = normalized.filter((cell) => knownHeaderSet.has(cell)).length;
+    const requiredCount = normalized.filter((cell) => requiredHeaderSet.has(cell)).length;
+    return { index, normalized, score: knownCount + requiredCount * 2 };
+  });
+  const bestHeader = headerCandidates.reduce((best, item) => (item.score > best.score ? item : best), { index: 0, normalized: rows[0].map(normalizeHeader), score: 0 });
+  const hasHeader = bestHeader.score >= 3;
+  const header = hasHeader ? bestHeader.normalized : rows[0].map(normalizeHeader);
+  const bodyRows = hasHeader ? rows.slice(bestHeader.index + 1) : rows;
   const findIndex = (keys: string[]) => keys.map((key) => header.indexOf(key)).find((index) => index !== -1) ?? -1;
   const indexMap = {
     name: hasHeader ? findIndex(["adsoyad", "adsoyadi", "ad", "musteri", "isim", "name", "fullname", "customer", "customername", "client", "clientname"]) : 0,
@@ -1671,31 +1681,39 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
     customerType: hasHeader ? findIndex(["musteritipi", "tip", "tur", "type", "musterituru", "customertype", "clienttype"]) : 10,
   };
 
-  return bodyRows
-    .map((row, index) => {
+  const importedLeads = bodyRows
+    .map<LeadImportPayload | null>((row, index) => {
       const propertyOwner = valueAt(row, indexMap.propertyOwner);
       const externalId = valueAt(row, indexMap.externalId);
       const address = valueAt(row, indexMap.address);
       const notes = valueAt(row, indexMap.notes);
       const district = valueAt(row, indexMap.district) || extractDistrictFromAddress(address);
-      const name = valueAt(row, indexMap.name) || propertyOwner || externalId || address || `No Name ${index + 1}`;
+      const rawName = valueAt(row, indexMap.name);
+      const cleanOwnerName = cleanContactName(propertyOwner);
+      const phone = valueAt(row, indexMap.phone) || extractPhone(propertyOwner) || "Telefon girilecek";
+      const customerType = inferCustomerType(valueAt(row, indexMap.customerType), propertyOwner, notes);
+      const hasRecordSignal = Boolean(rawName || propertyOwner || externalId || address || valueAt(row, indexMap.phone) || valueAt(row, indexMap.email));
+      if (!hasRecordSignal) return null;
+      const name = rawName || cleanOwnerName || externalId || address || `No Name ${index + 1}`;
       return {
         name,
         externalId: externalId || `M-${String(index + 1).padStart(4, "0")}`,
-        phone: valueAt(row, indexMap.phone) || "Telefon girilecek",
+        phone,
         email: valueAt(row, indexMap.email) || `musteri-${Date.now()}-${index + 1}@unitcrm.local`,
         source: valueAt(row, indexMap.source) || "Excel aktarımı",
         budget: parseBudget(valueAt(row, indexMap.budget)),
         interest: valueAt(row, indexMap.interest) || address || notes || "Genel müşteri kaydı",
         address,
         propertyOwner,
-        customerType: normalizeCustomerType(valueAt(row, indexMap.customerType)),
+        customerType,
         preferredLocation: district,
         notes,
         consultantId,
       };
     })
-    .filter((lead) => lead.name.trim());
+    .filter((lead): lead is LeadImportPayload => Boolean(lead && lead.name.trim()));
+
+  return importedLeads;
 }
 
 function splitDelimitedLine(line: string, delimiter: string) {
@@ -1735,11 +1753,73 @@ function parseBudget(value: unknown) {
   return digits ? Number(digits) : 0;
 }
 
-function normalizeCustomerType(value: unknown): Lead["customerType"] {
-  const normalized = normalizeHeader(value);
-  if (["mulksahibi", "malik", "owner", "propertyowner", "evsahibi", "landlord", "homeowner", "seller"].includes(normalized)) return "MULK_SAHIBI";
-  if (["kiraci", "tenant", "renter", "buyer", "client", "customer"].includes(normalized)) return "KIRACI";
+function extractPhone(value: unknown) {
+  const match = String(value ?? "").match(/(?:\+?90\s*)?(?:0\s*)?5\d(?:[\s().-]*\d){8}|\d(?:[\s().-]*\d){9,10}/);
+  return match ? match[0].replace(/[^\d+]/g, "") : "";
+}
+
+function cleanContactName(value: unknown) {
+  return String(value ?? "").replace(/(?:\+?90\s*)?(?:0\s*)?5\d(?:[\s().-]*\d){8}|\d(?:[\s().-]*\d){9,10}/g, "").replace(/\s+/g, " ").trim();
+}
+
+function exportLeadsToExcel(leads: Lead[], users: User[]) {
+  if (!leads.length) {
+    toast.error("Dışa aktarılacak müşteri bulunamadı");
+    return;
+  }
+
+  const headers = ["ID", "Mülk Sahibi", "Adres", "Semt", "Müşteri Tipi", "Müşteri", "Telefon", "E-posta", "Danışman", "Durum", "Notlar"];
+  const rows = leads.map((lead) => [
+    lead.externalId || lead.id,
+    lead.propertyOwner || lead.name || "",
+    lead.address || "",
+    lead.preferredLocation || extractDistrictFromAddress(lead.address) || "",
+    humanize(lead.customerType ?? "KIRACI"),
+    lead.name,
+    lead.phone,
+    lead.email,
+    users.find((item) => item.id === lead.consultantId)?.name ?? "",
+    humanize(lead.status),
+    lead.notes || "",
+  ]);
+  const tableRows = [headers, ...rows]
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeExcelCell(cell)}</td>`).join("")}</tr>`)
+    .join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse}td{border:1px solid #999;padding:6px;mso-number-format:"\\@"}</style></head><body><table>${tableRows}</table></body></html>`;
+  const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `musteriler-${new Date().toISOString().slice(0, 10)}.xls`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast.success("Müşteri listesi Excel olarak indirildi");
+}
+
+function escapeExcelCell(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/\r?\n/g, "<br/>");
+}
+
+function inferCustomerType(value: unknown, propertyOwner: unknown, notes: unknown): NonNullable<Lead["customerType"]> {
+  const explicitType = detectCustomerType(value);
+  if (explicitType) return explicitType;
+  const noteType = detectCustomerType(notes);
+  if (noteType) return noteType;
+  if (propertyOwner) return "MULK_SAHIBI";
   return "KIRACI";
+}
+
+function detectCustomerType(value: unknown): Lead["customerType"] | undefined {
+  const normalized = normalizeHeader(value);
+  if (!normalized) return undefined;
+  if (normalized.includes("mulksahibi") || ["malik", "owner", "propertyowner", "evsahibi", "landlord", "homeowner", "seller"].includes(normalized)) return "MULK_SAHIBI";
+  if (normalized.includes("kiraci") || ["tenant", "renter", "buyer", "client", "customer"].includes(normalized)) return "KIRACI";
+  return undefined;
 }
 
 function LeadsPage({ user }: { user: User }) {
@@ -1826,7 +1906,7 @@ function LeadsPage({ user }: { user: User }) {
             </label>
             <div className="flex gap-2 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">
               <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <span>.xlsx veya CSV yükle. Kolonlar: Notlar, ID, Adres, Semt, Mülk Sahibi, Müşteri Tipi.</span>
+              <span>.xlsx veya CSV yükle. Kolonlar: ID, Mülk Sahibi, Adres, Semt ve Notlar otomatik eşleşir.</span>
             </div>
           </div>
         </div>
@@ -1892,42 +1972,48 @@ function LeadsPage({ user }: { user: User }) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-9" placeholder="ID, adres, semt, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
+        {canManageOffice(user) ? (
+          <Button variant="outline" onClick={() => exportLeadsToExcel(leads, data.users)}>
+            <Download className="h-4 w-4" />
+            Excel’e Aktar
+          </Button>
+        ) : null}
         <Badge label={`${leads.length} kayıt`} />
       </Toolbar>
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] border-collapse text-sm">
-            <thead className="bg-[#e8f3ff] text-left text-xs uppercase tracking-wide text-primary">
+      <Card className="overflow-hidden border-slate-300 bg-white">
+        <div className="max-h-[680px] overflow-auto">
+          <table className="w-full min-w-[1380px] border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-[#e8f3ff] text-left text-[11px] uppercase tracking-wide text-primary">
               <tr>
-                <th className="px-4 py-3 font-semibold">ID</th>
-                <th className="px-4 py-3 font-semibold">Müşteri Tipi</th>
-                <th className="px-4 py-3 font-semibold">Müşteri</th>
-                <th className="px-4 py-3 font-semibold">Adres</th>
-                <th className="px-4 py-3 font-semibold">Semt</th>
-                <th className="px-4 py-3 font-semibold">Mülk Sahibi</th>
-                <th className="px-4 py-3 font-semibold">Notlar</th>
-                <th className="hidden px-4 py-3 font-semibold xl:table-cell">Danışman</th>
-                <th className="px-4 py-3 font-semibold">Durum</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">ID</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Mülk Sahibi</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Adres</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Semt</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Müşteri Tipi</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Müşteri</th>
+                <th className="hidden border border-slate-300 px-3 py-2 font-semibold xl:table-cell">Danışman</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Durum</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">Notlar</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {leads.map((lead) => (
-                <tr key={lead.id} className="cursor-pointer bg-white transition hover:bg-[#f3f8ff]" onClick={() => setSelectedLead(lead)}>
-                  <td className="px-4 py-3 font-mono text-xs">{lead.externalId || lead.id}</td>
-                  <td className="px-4 py-3"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
-                  <td className="px-4 py-3 font-medium"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
-                  <td className="px-4 py-3">{lead.address || "-"}</td>
-                  <td className="px-4 py-3">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
-                  <td className="px-4 py-3">{lead.propertyOwner || "-"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{lead.notes}</td>
-                  <td className="hidden px-4 py-3 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
-                  <td className="px-4 py-3"><Badge label={lead.status} /></td>
+                <tr key={lead.id} className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]" onClick={() => setSelectedLead(lead)}>
+                  <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.externalId || lead.id}</td>
+                  <td className="max-w-[240px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950">{lead.propertyOwner || lead.name || "-"}</td>
+                  <td className="max-w-[420px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-slate-800">{lead.address || "-"}</td>
+                  <td className="border border-slate-200 px-3 py-2 text-slate-800">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
+                  <td className="border border-slate-200 px-3 py-2"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
+                  <td className="max-w-[220px] border border-slate-200 px-3 py-2 font-medium text-slate-900"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
+                  <td className="hidden border border-slate-200 px-3 py-2 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
+                  <td className="border border-slate-200 px-3 py-2"><Badge label={lead.status} /></td>
+                  <td className="max-w-[320px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-muted-foreground">{lead.notes || "-"}</td>
                 </tr>
               ))}
               {!leads.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-muted-foreground" colSpan={9}>Müşteri kaydı bulunamadı.</td>
+                  <td className="border border-slate-200 px-4 py-10 text-center text-muted-foreground" colSpan={9}>Müşteri kaydı bulunamadı.</td>
                 </tr>
               ) : null}
             </tbody>
