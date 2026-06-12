@@ -1686,123 +1686,122 @@ function LeadsPage({ user }: { user: User }) {
         </div>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <div className="space-y-5">
-          <Card className="p-4">
-            <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-              {pipeline.map((item) => (
-                <div key={item.stage} className="rounded-md border border-border bg-white p-3">
-                  <p className="text-xs text-muted-foreground">{humanize(item.stage)}</p>
-                  <p className="mt-2 text-xl font-semibold text-slate-950">{item.count}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Toolbar>
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" placeholder="ID, adres, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
-            </div>
-            <Badge label={`${leads.length} kayıt`} />
-          </Toolbar>
-          <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-sm">
-              <thead className="bg-[#e8f3ff] text-left text-xs uppercase tracking-wide text-primary">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">ID</th>
-                  <th className="px-4 py-3 font-semibold">Müşteri Tipi</th>
-                  <th className="px-4 py-3 font-semibold">Müşteri</th>
-                  <th className="px-4 py-3 font-semibold">Adres</th>
-                  <th className="px-4 py-3 font-semibold">Mülk Sahibi</th>
-                  <th className="px-4 py-3 font-semibold">Notlar</th>
-                  <th className="hidden px-4 py-3 font-semibold xl:table-cell">Danışman</th>
-                  <th className="px-4 py-3 font-semibold">Durum</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {leads.map((lead) => (
-                  <tr key={lead.id} className="cursor-pointer bg-white transition hover:bg-[#f3f8ff]" onClick={() => setSelectedLead(lead)}>
-                    <td className="px-4 py-3 font-mono text-xs">{lead.externalId || lead.id}</td>
-                    <td className="px-4 py-3"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
-                    <td className="px-4 py-3 font-medium"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
-                    <td className="px-4 py-3">{lead.address || lead.preferredLocation || "-"}</td>
-                    <td className="px-4 py-3">{lead.propertyOwner || "-"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{lead.notes}</td>
-                    <td className="hidden px-4 py-3 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
-                    <td className="px-4 py-3"><Badge label={lead.status} /></td>
-                  </tr>
-                ))}
-                {!leads.length ? (
-                  <tr>
-                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={8}>Müşteri kaydı bulunamadı.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-        </div>
-        <div className="space-y-5">
-        <Card className="p-5">
-          <SectionTitle title="Hızlı Müşteri Ekle" action={<Badge label="Yeni" />} />
-          <form
-            className="space-y-3"
-            onSubmit={form.handleSubmit((values) => {
-              addLead(values as Parameters<typeof addLead>[0]);
-              form.reset(defaultLeadValues);
-            })}
-          >
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Input placeholder="ID" {...form.register("externalId")} />
-              <Select {...form.register("customerType")}>
-                <option value="KIRACI">Kiracı</option>
-                <option value="MULK_SAHIBI">Mülk Sahibi</option>
+      <Card className="p-4">
+        <SectionTitle title="Hızlı Müşteri Ekle" action={<Badge label="Yeni" />} />
+        <form
+          className="space-y-3"
+          onSubmit={form.handleSubmit((values) => {
+            addLead(values as Parameters<typeof addLead>[0]);
+            form.reset(defaultLeadValues);
+          })}
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+            <Input className="xl:col-span-1" placeholder="ID" {...form.register("externalId")} />
+            <Select className="xl:col-span-2" {...form.register("customerType")}>
+              <option value="KIRACI">Kiracı</option>
+              <option value="MULK_SAHIBI">Mülk Sahibi</option>
+            </Select>
+            <Input className="xl:col-span-2" placeholder="Ad soyad" {...form.register("name")} />
+            <Input className="xl:col-span-2" placeholder="Telefon" {...form.register("phone")} />
+            <Input className="xl:col-span-2" placeholder="E-posta" {...form.register("email")} />
+            <Input className="xl:col-span-3" placeholder="Adres" {...form.register("address")} />
+            <Input className="xl:col-span-2" placeholder="Mülk Sahibi" {...form.register("propertyOwner")} />
+            <Textarea className="min-h-10 xl:col-span-4" placeholder="Notlar" {...form.register("notes")} />
+            {canManageOffice(user) ? (
+              <Select className="xl:col-span-2" {...form.register("consultantId")}>
+                {consultants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </Select>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Input placeholder="Ad soyad" {...form.register("name")} />
-              <Input placeholder="Telefon" {...form.register("phone")} />
-            </div>
-            <Input placeholder="E-posta" {...form.register("email")} />
-            <Input placeholder="Adres" {...form.register("address")} />
-            <Input placeholder="Mülk Sahibi" {...form.register("propertyOwner")} />
-            <Textarea placeholder="Notlar" {...form.register("notes")} />
-            <input type="hidden" {...form.register("source")} />
-            <input type="hidden" {...form.register("budget")} />
-            <input type="hidden" {...form.register("interest")} />
-            {canManageOffice(user) ? <Select {...form.register("consultantId")}>{consultants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}
-            <Button className="w-full" type="submit">
+            ) : null}
+            <Button className="h-10 w-full xl:col-span-2" type="submit">
               <Plus className="h-4 w-4" />
               Müşteri Kaydet
             </Button>
-          </form>
-        </Card>
-        {selectedLead ? (
-          <Card className="p-5">
-            <SectionTitle title={selectedLead.name} action={<Badge label={selectedLead.status} />} />
-            <div className="grid gap-2 text-sm">
-              <InfoRow label="ID" value={selectedLead.externalId || selectedLead.id} />
-              <InfoRow label="Müşteri Tipi" value={humanize(selectedLead.customerType ?? "KIRACI")} />
-              <InfoRow label="Adres" value={selectedLead.address || "-"} />
-              <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
+          </div>
+          <input type="hidden" {...form.register("source")} />
+          <input type="hidden" {...form.register("budget")} />
+          <input type="hidden" {...form.register("interest")} />
+        </form>
+      </Card>
+
+      <Card className="p-4">
+        <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
+          {pipeline.map((item) => (
+            <div key={item.stage} className="rounded-md border border-border bg-white p-3">
+              <p className="text-xs text-muted-foreground">{humanize(item.stage)}</p>
+              <p className="mt-2 text-xl font-semibold text-slate-950">{item.count}</p>
             </div>
-            <p className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">{selectedLead.notes}</p>
-            <Textarea className="mt-4" placeholder="Lead aksiyonu / not ekle" value={note} onChange={(event) => setNote(event.target.value)} />
-            <div className="mt-3 flex gap-2">
-              <Button onClick={() => { addLeadAction(selectedLead.id, user.id, note || "Danışman notu eklendi."); setNote(""); }}>Not Ekle</Button>
-              <Button variant="outline" onClick={() => updateLead(selectedLead.id, { status: "TEKLIF_VERILDI" })}>Teklife Al</Button>
-            </div>
-          </Card>
-        ) : null}
-        {!selectedLead ? (
-          <Card className="border-blue-100 bg-[#f7fbff] p-5">
-            <SectionTitle title="Seçili Müşteri" />
-            <p className="text-sm leading-6 text-muted-foreground">Tablodan bir müşteriye tıklayınca arama notu, teklif durumu ve danışman aksiyonları burada açılır.</p>
-          </Card>
-        ) : null}
+          ))}
         </div>
-      </div>
+      </Card>
+
+      <Toolbar>
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="ID, adres, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+        <Badge label={`${leads.length} kayıt`} />
+      </Toolbar>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
+            <thead className="bg-[#e8f3ff] text-left text-xs uppercase tracking-wide text-primary">
+              <tr>
+                <th className="px-4 py-3 font-semibold">ID</th>
+                <th className="px-4 py-3 font-semibold">Müşteri Tipi</th>
+                <th className="px-4 py-3 font-semibold">Müşteri</th>
+                <th className="px-4 py-3 font-semibold">Adres</th>
+                <th className="px-4 py-3 font-semibold">Mülk Sahibi</th>
+                <th className="px-4 py-3 font-semibold">Notlar</th>
+                <th className="hidden px-4 py-3 font-semibold xl:table-cell">Danışman</th>
+                <th className="px-4 py-3 font-semibold">Durum</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {leads.map((lead) => (
+                <tr key={lead.id} className="cursor-pointer bg-white transition hover:bg-[#f3f8ff]" onClick={() => setSelectedLead(lead)}>
+                  <td className="px-4 py-3 font-mono text-xs">{lead.externalId || lead.id}</td>
+                  <td className="px-4 py-3"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
+                  <td className="px-4 py-3 font-medium"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
+                  <td className="px-4 py-3">{lead.address || lead.preferredLocation || "-"}</td>
+                  <td className="px-4 py-3">{lead.propertyOwner || "-"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{lead.notes}</td>
+                  <td className="hidden px-4 py-3 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
+                  <td className="px-4 py-3"><Badge label={lead.status} /></td>
+                </tr>
+              ))}
+              {!leads.length ? (
+                <tr>
+                  <td className="px-4 py-10 text-center text-muted-foreground" colSpan={8}>Müşteri kaydı bulunamadı.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {selectedLead ? (
+        <Card className="p-5">
+          <SectionTitle title={selectedLead.name} action={<Badge label={selectedLead.status} />} />
+          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+            <InfoRow label="ID" value={selectedLead.externalId || selectedLead.id} />
+            <InfoRow label="Müşteri Tipi" value={humanize(selectedLead.customerType ?? "KIRACI")} />
+            <InfoRow label="Adres" value={selectedLead.address || "-"} />
+            <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
+          </div>
+          <p className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">{selectedLead.notes}</p>
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+            <Textarea className="min-h-10" placeholder="Lead aksiyonu / not ekle" value={note} onChange={(event) => setNote(event.target.value)} />
+            <Button onClick={() => { addLeadAction(selectedLead.id, user.id, note || "Danışman notu eklendi."); setNote(""); }}>Not Ekle</Button>
+            <Button variant="outline" onClick={() => updateLead(selectedLead.id, { status: "TEKLIF_VERILDI" })}>Teklife Al</Button>
+          </div>
+        </Card>
+      ) : (
+        <Card className="border-blue-100 bg-[#f7fbff] p-5">
+          <SectionTitle title="Seçili Müşteri" />
+          <p className="text-sm leading-6 text-muted-foreground">Tablodan bir müşteriye tıklayınca arama notu, teklif durumu ve danışman aksiyonları burada açılır.</p>
+        </Card>
+      )}
     </div>
   );
 }
@@ -2506,16 +2505,6 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
     ],
   },
   {
-    key: "googleDrive",
-    name: "Google Drive",
-    status: "Doküman klasörü bağlantısı",
-    scope: "Tapu, yetki belgesi, sözleşme ve müşteri dosyaları",
-    fields: [
-      { id: "folderLink", label: "Drive klasör linki", placeholder: "Paylaşılan Google Drive klasör linki" },
-      { id: "connectionCode", label: "Bağlantı kodu", placeholder: "Google bağlantı kodu", secret: true },
-    ],
-  },
-  {
     key: "googleCalendar",
     name: "Google Takvim",
     status: "Randevu senkronizasyonu",
@@ -2574,14 +2563,6 @@ function IntegrationsPage() {
     toast.success(`${integrationName} erişim bilgileri kaydedildi`);
   };
   const hasAnyValue = (integrationKey: string) => Object.values(drafts[integrationKey] ?? {}).some((value) => value.trim().length > 0);
-  const testGoogleDrive = () => {
-    const drive = drafts.googleDrive ?? {};
-    if (!drive.folderLink && !drive.connectionCode) {
-      toast.error("Google Drive klasör linkini veya bağlantı kodunu girin.");
-      return;
-    }
-    toast.success("Google Drive klasörü bağlantıya hazır.");
-  };
 
   return (
     <div className="space-y-5">
@@ -2635,15 +2616,6 @@ function IntegrationsPage() {
               </div>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                 <Button onClick={() => saveIntegration(integration.key, integration.name)}>Bilgileri Kaydet</Button>
-                {integration.key === "googleDrive" ? (
-                  <>
-                    <Button variant="outline" onClick={testGoogleDrive}>Bağlantıyı Test Et</Button>
-                    <Button variant="outline" onClick={() => window.open("https://drive.google.com/drive/my-drive", "_blank", "noopener,noreferrer")}>
-                      <FolderOpen className="h-4 w-4" />
-                      Drive Aç
-                    </Button>
-                  </>
-                ) : null}
                 {isGoogleCalendar ? (
                   <Button variant="outline" onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>
                     <CalendarDays className="h-4 w-4" />
