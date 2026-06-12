@@ -1888,7 +1888,7 @@ function CalendarPage({ user }: { user: User }) {
       const result = await response.json() as { connected?: boolean; eventId?: string; htmlLink?: string; responseStatus?: string; error?: string };
 
       if (response.status === 409) {
-        toast.info("Görev CRM'e eklendi. Google daveti için danışmanın Google hesabını bağlaması gerekiyor.");
+        toast.info("Görev CRM'e eklendi. Google daveti için owner veya danışman Google hesabını bağlamalı.");
         return;
       }
 
