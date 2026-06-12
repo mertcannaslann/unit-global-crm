@@ -19,10 +19,15 @@ export const propertySchema = z.object({
 
 export const leadSchema = z.object({
   name: z.string().min(3, "Ad soyad girilmeli"),
-  email: z.string().email("Geçerli e-posta girilmeli"),
+  externalId: z.string().optional(),
+  email: z.string().email("Geçerli e-posta girilmeli").or(z.literal("")),
   phone: z.string().min(10, "Telefon girilmeli"),
   source: z.string().min(2, "Kaynak girilmeli"),
-  budget: z.coerce.number().min(1, "Bütçe girilmeli"),
+  budget: z.coerce.number().min(0, "Bütçe negatif olamaz"),
   interest: z.string().min(3, "İlgi alanı girilmeli"),
+  address: z.string().optional(),
+  propertyOwner: z.string().optional(),
+  customerType: z.enum(["MULK_SAHIBI", "KIRACI"]).optional(),
+  notes: z.string().optional(),
   consultantId: z.string().min(1, "Danışman seçilmeli"),
 });
