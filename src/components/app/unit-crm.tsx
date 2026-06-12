@@ -1532,13 +1532,103 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 type LeadImportPayload = Omit<Lead, "id" | "createdAt" | "status" | "notes"> & { notes?: string };
 
-function parseLeadImport(text: string, consultantId: string): LeadImportPayload[] {
+const istanbulDistrictOptions = [
+  "Adalar",
+  "Arnavutköy",
+  "Ataşehir",
+  "Avcılar",
+  "Bağcılar",
+  "Bahçelievler",
+  "Bakırköy",
+  "Başakşehir",
+  "Bayrampaşa",
+  "Beşiktaş",
+  "Beykoz",
+  "Beylikdüzü",
+  "Beyoğlu",
+  "Büyükçekmece",
+  "Çatalca",
+  "Çekmeköy",
+  "Esenler",
+  "Esenyurt",
+  "Eyüpsultan",
+  "Fatih",
+  "Gaziosmanpaşa",
+  "Güngören",
+  "Kadıköy",
+  "Kağıthane",
+  "Kartal",
+  "Küçükçekmece",
+  "Maltepe",
+  "Pendik",
+  "Sancaktepe",
+  "Sarıyer",
+  "Silivri",
+  "Sultanbeyli",
+  "Sultangazi",
+  "Şile",
+  "Şişli",
+  "Tuzla",
+  "Ümraniye",
+  "Üsküdar",
+  "Zeytinburnu",
+  "Akatlar",
+  "Bebek",
+  "Bomonti",
+  "Caddebostan",
+  "Cihangir",
+  "Etiler",
+  "Fenerbahçe",
+  "Galata",
+  "Karaköy",
+  "Levent",
+  "Maslak",
+  "Moda",
+  "Nişantaşı",
+  "Ortaköy",
+  "Suadiye",
+  "Tarabya",
+  "Ulus",
+  "Yeniköy",
+];
+
+function parseDelimitedRows(text: string) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length) return [];
   const delimiter = lines[0].includes("\t") ? "\t" : lines[0].includes(";") ? ";" : ",";
-  const rows = lines.map((line) => splitDelimitedLine(line, delimiter));
+  return lines.map((line) => splitDelimitedLine(line, delimiter));
+}
+
+function parseLeadImport(text: string, consultantId: string): LeadImportPayload[] {
+  return parseLeadRows(parseDelimitedRows(text), consultantId);
+}
+
+function parseLeadRows(rows: string[][], consultantId: string): LeadImportPayload[] {
+  if (!rows.length) return [];
   const header = rows[0].map(normalizeHeader);
-  const hasHeader = header.some((cell) => ["ad", "adsoyad", "musteri", "telefon", "phone"].includes(cell));
+  const knownHeaders = [
+    "ad",
+    "adsoyad",
+    "adres",
+    "address",
+    "bolge",
+    "email",
+    "eposta",
+    "id",
+    "mail",
+    "malik",
+    "mulksahibi",
+    "musteri",
+    "musteriid",
+    "musteritipi",
+    "not",
+    "notes",
+    "phone",
+    "propertyowner",
+    "semt",
+    "telefon",
+  ];
+  const hasHeader = header.some((cell) => knownHeaders.includes(cell));
   const bodyRows = hasHeader ? rows.slice(1) : rows;
   const findIndex = (keys: string[]) => keys.map((key) => header.indexOf(key)).find((index) => index !== -1) ?? -1;
   const indexMap = {
@@ -1551,6 +1641,7 @@ function parseLeadImport(text: string, consultantId: string): LeadImportPayload[
     notes: hasHeader ? findIndex(["notlar", "not", "notes", "aciklama", "aciklamalar"]) : 6,
     externalId: hasHeader ? findIndex(["id", "musteriid", "musterino", "kayitno"]) : 7,
     address: hasHeader ? findIndex(["adres", "address", "lokasyon", "konum"]) : 8,
+    district: hasHeader ? findIndex(["semt", "bolge", "mahalle", "ilce", "district", "neighborhood", "location"]) : 11,
     propertyOwner: hasHeader ? findIndex(["mulksahibi", "malik", "propertyowner", "owner", "evsahibi"]) : 9,
     customerType: hasHeader ? findIndex(["musteritipi", "tip", "tur", "type", "musterituru"]) : 10,
   };
@@ -1561,7 +1652,8 @@ function parseLeadImport(text: string, consultantId: string): LeadImportPayload[
       const externalId = valueAt(row, indexMap.externalId);
       const address = valueAt(row, indexMap.address);
       const notes = valueAt(row, indexMap.notes);
-      const name = valueAt(row, indexMap.name) || propertyOwner || `No Name ${index + 1}`;
+      const district = valueAt(row, indexMap.district) || extractDistrictFromAddress(address);
+      const name = valueAt(row, indexMap.name) || propertyOwner || externalId || address || `No Name ${index + 1}`;
       return {
         name,
         externalId: externalId || `M-${String(index + 1).padStart(4, "0")}`,
@@ -1573,7 +1665,7 @@ function parseLeadImport(text: string, consultantId: string): LeadImportPayload[
         address,
         propertyOwner,
         customerType: normalizeCustomerType(valueAt(row, indexMap.customerType)),
-        preferredLocation: address,
+        preferredLocation: district,
         notes,
         consultantId,
       };
@@ -1602,6 +1694,11 @@ function splitDelimitedLine(line: string, delimiter: string) {
 
 function normalizeHeader(value: string) {
   return value.toLocaleLowerCase("tr").replace(/[ğ]/g, "g").replace(/[ü]/g, "u").replace(/[ş]/g, "s").replace(/[ı]/g, "i").replace(/[ö]/g, "o").replace(/[ç]/g, "c").replace(/[^a-z0-9]/g, "");
+}
+
+function extractDistrictFromAddress(address?: string) {
+  const normalizedAddress = normalizeHeader(address ?? "");
+  return istanbulDistrictOptions.find((district) => normalizedAddress.includes(normalizeHeader(district))) ?? "";
 }
 
 function valueAt(row: string[], index: number) {
@@ -1636,29 +1733,53 @@ function LeadsPage({ user }: { user: User }) {
     budget: 0,
     interest: "Genel müşteri kaydı",
     address: "",
+    preferredLocation: "",
     propertyOwner: "",
     customerType: "KIRACI" as const,
     notes: "",
     consultantId: canManageOffice(user) ? firstConsultantId : user.id,
   };
   const form = useForm({ resolver: zodResolver(leadSchema), defaultValues: defaultLeadValues });
-  const leads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && `${lead.name} ${lead.externalId ?? ""} ${lead.address ?? ""} ${lead.propertyOwner ?? ""} ${lead.notes} ${lead.interest}`.toLowerCase().includes(query.toLowerCase()));
+  const watchedAddress = form.watch("address");
+  const leads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && `${lead.name} ${lead.externalId ?? ""} ${lead.address ?? ""} ${lead.preferredLocation ?? ""} ${lead.propertyOwner ?? ""} ${lead.notes} ${lead.interest}`.toLowerCase().includes(query.toLowerCase()));
   const consultants = data.users.filter((item) => item.role === "CONSULTANT");
   const pipeline = leadStages.map((stage) => ({ stage, count: leads.filter((lead) => lead.status === stage).length }));
+
+  useEffect(() => {
+    const detectedDistrict = extractDistrictFromAddress(watchedAddress);
+    const currentDistrict = form.getValues("preferredLocation");
+    if (detectedDistrict && !currentDistrict) {
+      form.setValue("preferredLocation", detectedDistrict);
+    }
+  }, [form, watchedAddress]);
 
   async function handleLeadImport(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!/\.(csv|tsv|txt)$/i.test(file.name)) {
-      toast.error("Şimdilik Excel dosyasını CSV olarak dışa aktar ve yükle.");
+    if (!/\.(xlsx|csv|tsv|txt)$/i.test(file.name)) {
+      toast.error("Excel için .xlsx veya CSV dosyası yükle.");
       return;
     }
     setImporting(true);
     try {
-      const text = await file.text();
-      const imported = parseLeadImport(text, canManageOffice(user) ? firstConsultantId : user.id);
+      const consultantId = canManageOffice(user) ? firstConsultantId : user.id;
+      let imported: LeadImportPayload[] = [];
+
+      if (/\.xlsx$/i.test(file.name)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/lead-import", { method: "POST", body: formData });
+        const result = (await response.json()) as { rows?: string[][]; error?: string };
+        if (!response.ok || !result.rows) throw new Error(result.error ?? "Excel dosyası okunamadı.");
+        imported = parseLeadRows(result.rows, consultantId);
+      } else {
+        imported = parseLeadImport(await file.text(), consultantId);
+      }
+
       importLeads(imported, file.name);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Dosya okunamadı.");
     } finally {
       setImporting(false);
     }
@@ -1676,11 +1797,11 @@ function LeadsPage({ user }: { user: User }) {
             <label className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-blue-100 bg-white px-4 text-sm font-medium text-primary transition hover:bg-[#eef6ff]">
               {importing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {importing ? "Aktarılıyor" : "Excel / CSV Yükle"}
-              <input className="hidden" type="file" accept=".csv,.tsv,.txt" onChange={handleLeadImport} />
+              <input className="hidden" type="file" accept=".xlsx,.csv,.tsv,.txt" onChange={handleLeadImport} />
             </label>
             <div className="flex gap-2 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">
               <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <span>Excel dosyanı CSV olarak dışa aktar. Kolonlar: Notlar, ID, Adres, Mülk Sahibi, Müşteri Tipi.</span>
+              <span>.xlsx veya CSV yükle. Kolonlar: Notlar, ID, Adres, Semt, Mülk Sahibi, Müşteri Tipi.</span>
             </div>
           </div>
         </div>
@@ -1691,7 +1812,10 @@ function LeadsPage({ user }: { user: User }) {
         <form
           className="space-y-3"
           onSubmit={form.handleSubmit((values) => {
-            addLead(values as Parameters<typeof addLead>[0]);
+            addLead({
+              ...values,
+              preferredLocation: values.preferredLocation?.trim() || extractDistrictFromAddress(values.address),
+            } as Parameters<typeof addLead>[0]);
             form.reset(defaultLeadValues);
           })}
         >
@@ -1705,6 +1829,7 @@ function LeadsPage({ user }: { user: User }) {
             <Input className="xl:col-span-2" placeholder="Telefon" {...form.register("phone")} />
             <Input className="xl:col-span-2" placeholder="E-posta" {...form.register("email")} />
             <Input className="xl:col-span-3" placeholder="Adres" {...form.register("address")} />
+            <Input className="xl:col-span-2" list="lead-semt-options" placeholder="Semt" {...form.register("preferredLocation")} />
             <Input className="xl:col-span-2" placeholder="Mülk Sahibi" {...form.register("propertyOwner")} />
             <Textarea className="min-h-10 xl:col-span-4" placeholder="Notlar" {...form.register("notes")} />
             {canManageOffice(user) ? (
@@ -1717,6 +1842,9 @@ function LeadsPage({ user }: { user: User }) {
               Müşteri Kaydet
             </Button>
           </div>
+          <datalist id="lead-semt-options">
+            {istanbulDistrictOptions.map((district) => <option key={district} value={district} />)}
+          </datalist>
           <input type="hidden" {...form.register("source")} />
           <input type="hidden" {...form.register("budget")} />
           <input type="hidden" {...form.register("interest")} />
@@ -1737,20 +1865,21 @@ function LeadsPage({ user }: { user: User }) {
       <Toolbar>
         <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="ID, adres, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <Input className="pl-9" placeholder="ID, adres, semt, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         <Badge label={`${leads.length} kayıt`} />
       </Toolbar>
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
+          <table className="w-full min-w-[1120px] border-collapse text-sm">
             <thead className="bg-[#e8f3ff] text-left text-xs uppercase tracking-wide text-primary">
               <tr>
                 <th className="px-4 py-3 font-semibold">ID</th>
                 <th className="px-4 py-3 font-semibold">Müşteri Tipi</th>
                 <th className="px-4 py-3 font-semibold">Müşteri</th>
                 <th className="px-4 py-3 font-semibold">Adres</th>
+                <th className="px-4 py-3 font-semibold">Semt</th>
                 <th className="px-4 py-3 font-semibold">Mülk Sahibi</th>
                 <th className="px-4 py-3 font-semibold">Notlar</th>
                 <th className="hidden px-4 py-3 font-semibold xl:table-cell">Danışman</th>
@@ -1763,7 +1892,8 @@ function LeadsPage({ user }: { user: User }) {
                   <td className="px-4 py-3 font-mono text-xs">{lead.externalId || lead.id}</td>
                   <td className="px-4 py-3"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
                   <td className="px-4 py-3 font-medium"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
-                  <td className="px-4 py-3">{lead.address || lead.preferredLocation || "-"}</td>
+                  <td className="px-4 py-3">{lead.address || "-"}</td>
+                  <td className="px-4 py-3">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
                   <td className="px-4 py-3">{lead.propertyOwner || "-"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{lead.notes}</td>
                   <td className="hidden px-4 py-3 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
@@ -1772,7 +1902,7 @@ function LeadsPage({ user }: { user: User }) {
               ))}
               {!leads.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-muted-foreground" colSpan={8}>Müşteri kaydı bulunamadı.</td>
+                  <td className="px-4 py-10 text-center text-muted-foreground" colSpan={9}>Müşteri kaydı bulunamadı.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -1787,6 +1917,7 @@ function LeadsPage({ user }: { user: User }) {
             <InfoRow label="ID" value={selectedLead.externalId || selectedLead.id} />
             <InfoRow label="Müşteri Tipi" value={humanize(selectedLead.customerType ?? "KIRACI")} />
             <InfoRow label="Adres" value={selectedLead.address || "-"} />
+            <InfoRow label="Semt" value={selectedLead.preferredLocation || extractDistrictFromAddress(selectedLead.address) || "-"} />
             <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
           </div>
           <p className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">{selectedLead.notes}</p>
@@ -1832,10 +1963,11 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
               {leadStages.map((stage) => <option key={stage} value={stage}>{humanize(stage)}</option>)}
             </Select>
           </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <InfoBox label="ID" value={lead.externalId || lead.id} />
             <InfoBox label="Müşteri Tipi" value={humanize(lead.customerType ?? "KIRACI")} />
             <InfoBox label="Adres" value={lead.address || lead.preferredLocation || "-"} />
+            <InfoBox label="Semt" value={lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"} />
             <InfoBox label="Mülk Sahibi" value={lead.propertyOwner || "-"} />
             <InfoBox label="Danışman" value={consultant?.name ?? "Atanmadı"} />
           </div>
