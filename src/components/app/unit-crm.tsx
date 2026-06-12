@@ -52,6 +52,15 @@ type CrmAppProps = {
   slug: string[];
 };
 
+type GoogleCalendarStatus = {
+  connected: boolean;
+  configReady?: boolean;
+  userEmail?: string;
+  googleEmail?: string | null;
+  calendarId?: string;
+  updatedAt?: string | null;
+};
+
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/portfoyler", label: "Portföyler", icon: Building2 },
@@ -2521,6 +2530,8 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
 function IntegrationsPage() {
   const { data } = useCrm();
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [calendarStatus, setCalendarStatus] = useState<GoogleCalendarStatus | null>(null);
+  const [calendarStatusLoading, setCalendarStatusLoading] = useState(true);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("unit-crm-integration-drafts");
@@ -2528,6 +2539,25 @@ function IntegrationsPage() {
     } catch {
       window.localStorage.removeItem("unit-crm-integration-drafts");
     }
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setCalendarStatusLoading(true);
+    fetch("/api/google-calendar/status")
+      .then((response) => (response.ok ? response.json() as Promise<GoogleCalendarStatus> : null))
+      .then((status) => {
+        if (active) setCalendarStatus(status);
+      })
+      .catch(() => {
+        if (active) setCalendarStatus(null);
+      })
+      .finally(() => {
+        if (active) setCalendarStatusLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
   const updateDraft = (integrationKey: string, fieldId: string, value: string) => {
     setDrafts((current) => ({
@@ -2556,52 +2586,74 @@ function IntegrationsPage() {
   return (
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-2">
-        {integrationFormConfigs.map((integration) => (
-          <Card key={integration.key} className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-slate-950">{integration.name}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{integration.status}</p>
+        {integrationFormConfigs.map((integration) => {
+          const isGoogleCalendar = integration.key === "googleCalendar";
+          const calendarConnected = Boolean(calendarStatus?.connected);
+          const ready = isGoogleCalendar ? calendarConnected || hasAnyValue(integration.key) : hasAnyValue(integration.key);
+          const badgeLabel = isGoogleCalendar ? (calendarStatusLoading ? "Kontrol" : calendarConnected ? "Bağlı" : "OAuth") : ready ? "Hazır" : "Form";
+          const statusLabel = isGoogleCalendar
+            ? calendarConnected
+              ? "Google hesabı bağlı"
+              : calendarStatusLoading
+                ? "Bağlantı kontrol ediliyor"
+                : "Bağlantı bekleniyor"
+            : ready
+              ? "Bağlantı bilgisi hazır"
+              : "Bağlantı bekleniyor";
+
+          return (
+            <Card key={integration.key} className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-950">{integration.name}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{integration.status}</p>
+                </div>
+                <Badge label={badgeLabel} />
               </div>
-              <Badge label={hasAnyValue(integration.key) ? "Hazır" : "Form"} />
-            </div>
-            <div className="mt-5 space-y-3 text-sm">
-              <InfoRow label="Veri kapsamı" value={integration.scope} />
-              <InfoRow label="Durum" value={hasAnyValue(integration.key) ? "Bağlantı bilgisi hazır" : "Bağlantı bekleniyor"} />
-              <InfoRow label="Scraping" value="Yok" />
-            </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              {integration.fields.map((field) => (
-                <Field key={field.id} label={field.label}>
-                  <Input
-                    type={field.secret ? "password" : "text"}
-                    value={drafts[integration.key]?.[field.id] ?? ""}
-                    placeholder={field.placeholder}
-                    onChange={(event) => updateDraft(integration.key, field.id, event.target.value)}
-                  />
-                </Field>
-              ))}
-            </div>
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-              <Button onClick={() => saveIntegration(integration.key, integration.name)}>Bilgileri Kaydet</Button>
-              {integration.key === "googleDrive" ? (
-                <>
-                  <Button variant="outline" onClick={testGoogleDrive}>Bağlantıyı Test Et</Button>
-                  <Button variant="outline" onClick={() => window.open("https://drive.google.com/drive/my-drive", "_blank", "noopener,noreferrer")}>
-                    <FolderOpen className="h-4 w-4" />
-                    Drive Aç
+              <div className="mt-5 space-y-3 text-sm">
+                <InfoRow label="Veri kapsamı" value={integration.scope} />
+                <InfoRow label="Durum" value={statusLabel} />
+                {isGoogleCalendar && calendarConnected ? (
+                  <>
+                    <InfoRow label="Bağlı hesap" value={calendarStatus?.googleEmail ?? calendarStatus?.userEmail ?? "Google hesabı"} />
+                    <InfoRow label="Takvim" value={calendarStatus?.calendarId ?? "primary"} />
+                  </>
+                ) : null}
+                <InfoRow label="Scraping" value="Yok" />
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {integration.fields.map((field) => (
+                  <Field key={field.id} label={field.label}>
+                    <Input
+                      type={field.secret ? "password" : "text"}
+                      value={drafts[integration.key]?.[field.id] ?? ""}
+                      placeholder={field.placeholder}
+                      onChange={(event) => updateDraft(integration.key, field.id, event.target.value)}
+                    />
+                  </Field>
+                ))}
+              </div>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <Button onClick={() => saveIntegration(integration.key, integration.name)}>Bilgileri Kaydet</Button>
+                {integration.key === "googleDrive" ? (
+                  <>
+                    <Button variant="outline" onClick={testGoogleDrive}>Bağlantıyı Test Et</Button>
+                    <Button variant="outline" onClick={() => window.open("https://drive.google.com/drive/my-drive", "_blank", "noopener,noreferrer")}>
+                      <FolderOpen className="h-4 w-4" />
+                      Drive Aç
+                    </Button>
+                  </>
+                ) : null}
+                {isGoogleCalendar ? (
+                  <Button variant="outline" onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>
+                    <CalendarDays className="h-4 w-4" />
+                    {calendarConnected ? "Google OAuth Yeniden Bağla" : "Google OAuth ile Bağla"}
                   </Button>
-                </>
-              ) : null}
-              {integration.key === "googleCalendar" ? (
-                <Button variant="outline" onClick={() => { window.location.href = "/api/google-calendar/connect"; }}>
-                  <CalendarDays className="h-4 w-4" />
-                  Google OAuth ile Bağla
-                </Button>
-              ) : null}
-            </div>
-          </Card>
-        ))}
+                ) : null}
+              </div>
+            </Card>
+          );
+        })}
       </div>
       <Card className="p-5">
         <SectionTitle title="Uyum Notu" />
