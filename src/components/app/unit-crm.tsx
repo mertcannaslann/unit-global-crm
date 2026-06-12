@@ -838,10 +838,9 @@ function Dashboard({ user }: { user: User }) {
         <Metric label="Kira hatırlatma" value={tenantReminders.length.toString()} detail="7/5/3 gün ve çıkış günü" />
       </div>
 
-      {canSeeOffice(user) ? (
-        <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+      <div className={`grid gap-5 ${canSeeOffice(user) ? "xl:grid-cols-[1fr_1fr]" : ""}`}>
           <Card className="p-5">
-            <SectionTitle title="Satış / Kiralama Raporu" action="Bugün · Bu hafta · Bu ay" />
+            <SectionTitle title="Satış / Kiralama Raporu" action={canSeeOffice(user) ? "Ofis geneli" : "Kişisel"} />
             <div className="grid gap-3 md:grid-cols-3">
               {reportRanges.map((report) => (
                 <div key={report.range} className="rounded-md border border-border bg-white p-4">
@@ -856,6 +855,7 @@ function Dashboard({ user }: { user: User }) {
               ))}
             </div>
           </Card>
+          {canSeeOffice(user) ? (
           <Card className="overflow-hidden">
             <SectionTitle title="Danışman Bazlı Rapor" action="Sadece owner görünümü" padded />
             <div className="overflow-x-auto">
@@ -881,8 +881,8 @@ function Dashboard({ user }: { user: User }) {
               </table>
             </div>
           </Card>
-        </div>
-      ) : null}
+          ) : null}
+      </div>
 
       <Card className="p-5">
         <SectionTitle title="Kira Sözleşmesi Hatırlatmaları" action={`${tenantReminders.length} bildirim`} />
