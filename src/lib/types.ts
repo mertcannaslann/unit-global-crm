@@ -88,8 +88,14 @@ export type Task = {
   description: string;
   type?: TaskType;
   dueDate: string;
+  endDate?: string;
+  location?: string;
+  reminderMinutes?: number;
   priority: "DUSUK" | "ORTA" | "YUKSEK";
   status: TaskStatus;
+  googleCalendarEventId?: string;
+  googleCalendarHtmlLink?: string;
+  googleCalendarResponseStatus?: string;
   assignedToId: string;
   createdById: string;
   leadId?: string;
