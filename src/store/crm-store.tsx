@@ -150,7 +150,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
             id: `lead-import-${now}-${index}`,
             status: "YENI_LEAD" as const,
             customerType: lead.customerType ?? "KIRACI",
-            notes: lead.notes?.trim() || "Excel / CSV aktarımı ile eklendi. İlk temas bekleniyor.",
+            notes: lead.notes?.trim() || "",
             createdAt: new Date(now + index).toISOString(),
           })),
           ...current.leads,
