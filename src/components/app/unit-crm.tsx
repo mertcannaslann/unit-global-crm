@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardList,
-  Columns3,
   CalendarDays,
   ExternalLink,
   FileSpreadsheet,
@@ -149,6 +148,8 @@ function humanize(value?: string) {
     OFIS_SAHIBI: "Ofis Sahibi",
     CONSULTANT: "Danışman",
     ADMIN: "Admin",
+    MULK_SAHIBI: "Mülk Sahibi",
+    KIRACI: "Kiracı",
     needsAction: "Yanıt bekliyor",
     accepted: "Kabul edildi",
     declined: "Reddedildi",
@@ -1512,7 +1513,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   );
 }
 
-type LeadImportPayload = Omit<Lead, "id" | "createdAt" | "status" | "notes">;
+type LeadImportPayload = Omit<Lead, "id" | "createdAt" | "status" | "notes"> & { notes?: string };
 
 function parseLeadImport(text: string, consultantId: string): LeadImportPayload[] {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -1530,19 +1531,37 @@ function parseLeadImport(text: string, consultantId: string): LeadImportPayload[
     source: hasHeader ? findIndex(["kaynak", "source"]) : 3,
     budget: hasHeader ? findIndex(["butce", "budget", "bütçe"]) : 4,
     interest: hasHeader ? findIndex(["ilgi", "interest", "talep", "not"]) : 5,
+    notes: hasHeader ? findIndex(["notlar", "not", "notes", "aciklama", "aciklamalar"]) : 6,
+    externalId: hasHeader ? findIndex(["id", "musteriid", "musterino", "kayitno"]) : 7,
+    address: hasHeader ? findIndex(["adres", "address", "lokasyon", "konum"]) : 8,
+    propertyOwner: hasHeader ? findIndex(["mulksahibi", "malik", "propertyowner", "owner", "evsahibi"]) : 9,
+    customerType: hasHeader ? findIndex(["musteritipi", "tip", "tur", "type", "musterituru"]) : 10,
   };
 
   return bodyRows
-    .map((row, index) => ({
-      name: valueAt(row, indexMap.name) || `No Name ${index + 1}`,
-      phone: valueAt(row, indexMap.phone),
-      email: valueAt(row, indexMap.email),
-      source: valueAt(row, indexMap.source) || "Excel aktarımı",
-      budget: parseBudget(valueAt(row, indexMap.budget)),
-      interest: valueAt(row, indexMap.interest) || "Genel portföy ilgisi",
-      consultantId,
-    }))
-    .filter((lead) => lead.name.trim() && lead.phone.trim());
+    .map((row, index) => {
+      const propertyOwner = valueAt(row, indexMap.propertyOwner);
+      const externalId = valueAt(row, indexMap.externalId);
+      const address = valueAt(row, indexMap.address);
+      const notes = valueAt(row, indexMap.notes);
+      const name = valueAt(row, indexMap.name) || propertyOwner || `No Name ${index + 1}`;
+      return {
+        name,
+        externalId: externalId || `M-${String(index + 1).padStart(4, "0")}`,
+        phone: valueAt(row, indexMap.phone) || "Telefon girilecek",
+        email: valueAt(row, indexMap.email) || `musteri-${Date.now()}-${index + 1}@unitcrm.local`,
+        source: valueAt(row, indexMap.source) || "Excel aktarımı",
+        budget: parseBudget(valueAt(row, indexMap.budget)),
+        interest: valueAt(row, indexMap.interest) || address || notes || "Genel müşteri kaydı",
+        address,
+        propertyOwner,
+        customerType: normalizeCustomerType(valueAt(row, indexMap.customerType)),
+        preferredLocation: address,
+        notes,
+        consultantId,
+      };
+    })
+    .filter((lead) => lead.name.trim());
 }
 
 function splitDelimitedLine(line: string, delimiter: string) {
@@ -1577,6 +1596,13 @@ function parseBudget(value: string) {
   return digits ? Number(digits) : 0;
 }
 
+function normalizeCustomerType(value: string): Lead["customerType"] {
+  const normalized = normalizeHeader(value);
+  if (["mulksahibi", "malik", "owner", "propertyowner", "evsahibi"].includes(normalized)) return "MULK_SAHIBI";
+  if (["kiraci", "tenant", "renter"].includes(normalized)) return "KIRACI";
+  return "KIRACI";
+}
+
 function LeadsPage({ user }: { user: User }) {
   const { data, addLead, importLeads, addLeadAction, updateLead } = useCrm();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -1584,8 +1610,22 @@ function LeadsPage({ user }: { user: User }) {
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
   const firstConsultantId = data.users.find((item) => item.role === "CONSULTANT")?.id ?? user.id;
-  const form = useForm({ resolver: zodResolver(leadSchema), defaultValues: { name: "", email: "", phone: "", source: "Web Form", budget: 15000000, interest: "Bebek premium portföy", consultantId: canManageOffice(user) ? firstConsultantId : user.id } });
-  const leads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && `${lead.name} ${lead.interest}`.toLowerCase().includes(query.toLowerCase()));
+  const defaultLeadValues = {
+    name: "",
+    externalId: "",
+    email: "",
+    phone: "",
+    source: "Manuel giriş",
+    budget: 0,
+    interest: "Genel müşteri kaydı",
+    address: "",
+    propertyOwner: "",
+    customerType: "KIRACI" as const,
+    notes: "",
+    consultantId: canManageOffice(user) ? firstConsultantId : user.id,
+  };
+  const form = useForm({ resolver: zodResolver(leadSchema), defaultValues: defaultLeadValues });
+  const leads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && `${lead.name} ${lead.externalId ?? ""} ${lead.address ?? ""} ${lead.propertyOwner ?? ""} ${lead.notes} ${lead.interest}`.toLowerCase().includes(query.toLowerCase()));
   const consultants = data.users.filter((item) => item.role === "CONSULTANT");
   const pipeline = leadStages.map((stage) => ({ stage, count: leads.filter((lead) => lead.status === stage).length }));
 
@@ -1623,7 +1663,7 @@ function LeadsPage({ user }: { user: User }) {
             </label>
             <div className="flex gap-2 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">
               <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <span>Excel dosyanı CSV olarak dışa aktar. Kolonlar: ad soyad, telefon, e-posta, kaynak, bütçe, ilgi.</span>
+              <span>Excel dosyanı CSV olarak dışa aktar. Kolonlar: Notlar, ID, Adres, Mülk Sahibi, Müşteri Tipi.</span>
             </div>
           </div>
         </div>
@@ -1644,20 +1684,21 @@ function LeadsPage({ user }: { user: User }) {
           <Toolbar>
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Müşteri, telefon, ilgi alanı ara" value={query} onChange={(event) => setQuery(event.target.value)} />
+              <Input className="pl-9" placeholder="ID, adres, mülk sahibi veya not ara" value={query} onChange={(event) => setQuery(event.target.value)} />
             </div>
             <Badge label={`${leads.length} kayıt`} />
           </Toolbar>
           <Card className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
+            <table className="w-full min-w-[980px] border-collapse text-sm">
               <thead className="bg-[#e8f3ff] text-left text-xs uppercase tracking-wide text-primary">
                 <tr>
+                  <th className="px-4 py-3 font-semibold">ID</th>
+                  <th className="px-4 py-3 font-semibold">Müşteri Tipi</th>
                   <th className="px-4 py-3 font-semibold">Müşteri</th>
-                  <th className="px-4 py-3 font-semibold">Telefon</th>
-                  <th className="hidden px-4 py-3 font-semibold md:table-cell">Kaynak</th>
-                  <th className="px-4 py-3 font-semibold">İlgi</th>
-                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Bütçe</th>
+                  <th className="px-4 py-3 font-semibold">Adres</th>
+                  <th className="px-4 py-3 font-semibold">Mülk Sahibi</th>
+                  <th className="px-4 py-3 font-semibold">Notlar</th>
                   <th className="hidden px-4 py-3 font-semibold xl:table-cell">Danışman</th>
                   <th className="px-4 py-3 font-semibold">Durum</th>
                 </tr>
@@ -1665,18 +1706,19 @@ function LeadsPage({ user }: { user: User }) {
               <tbody className="divide-y divide-border">
                 {leads.map((lead) => (
                   <tr key={lead.id} className="cursor-pointer bg-white transition hover:bg-[#f3f8ff]" onClick={() => setSelectedLead(lead)}>
+                    <td className="px-4 py-3 font-mono text-xs">{lead.externalId || lead.id}</td>
+                    <td className="px-4 py-3"><Badge label={humanize(lead.customerType ?? "KIRACI")} /></td>
                     <td className="px-4 py-3 font-medium"><Link href={`/musteriler/${lead.id}`}>{lead.name}</Link></td>
-                    <td className="px-4 py-3">{lead.phone}</td>
-                    <td className="hidden px-4 py-3 md:table-cell">{lead.source}</td>
-                    <td className="px-4 py-3">{lead.interest}</td>
-                    <td className="hidden px-4 py-3 lg:table-cell">{money(lead.budget)}</td>
+                    <td className="px-4 py-3">{lead.address || lead.preferredLocation || "-"}</td>
+                    <td className="px-4 py-3">{lead.propertyOwner || "-"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{lead.notes}</td>
                     <td className="hidden px-4 py-3 xl:table-cell">{data.users.find((item) => item.id === lead.consultantId)?.name ?? "-"}</td>
                     <td className="px-4 py-3"><Badge label={lead.status} /></td>
                   </tr>
                 ))}
                 {!leads.length ? (
                   <tr>
-                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={7}>Müşteri kaydı bulunamadı.</td>
+                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={8}>Müşteri kaydı bulunamadı.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -1691,19 +1733,27 @@ function LeadsPage({ user }: { user: User }) {
             className="space-y-3"
             onSubmit={form.handleSubmit((values) => {
               addLead(values as Parameters<typeof addLead>[0]);
-              form.reset({ name: "", email: "", phone: "", source: "Web Form", budget: 15000000, interest: "Bebek premium portföy", consultantId: canManageOffice(user) ? firstConsultantId : user.id });
+              form.reset(defaultLeadValues);
             })}
           >
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <Input placeholder="ID" {...form.register("externalId")} />
+              <Select {...form.register("customerType")}>
+                <option value="KIRACI">Kiracı</option>
+                <option value="MULK_SAHIBI">Mülk Sahibi</option>
+              </Select>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <Input placeholder="Ad soyad" {...form.register("name")} />
               <Input placeholder="Telefon" {...form.register("phone")} />
             </div>
             <Input placeholder="E-posta" {...form.register("email")} />
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Input placeholder="Kaynak" {...form.register("source")} />
-              <Input type="number" placeholder="Bütçe" {...form.register("budget")} />
-            </div>
-            <Input placeholder="İlgi alanı" {...form.register("interest")} />
+            <Input placeholder="Adres" {...form.register("address")} />
+            <Input placeholder="Mülk Sahibi" {...form.register("propertyOwner")} />
+            <Textarea placeholder="Notlar" {...form.register("notes")} />
+            <input type="hidden" {...form.register("source")} />
+            <input type="hidden" {...form.register("budget")} />
+            <input type="hidden" {...form.register("interest")} />
             {canManageOffice(user) ? <Select {...form.register("consultantId")}>{consultants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}
             <Button className="w-full" type="submit">
               <Plus className="h-4 w-4" />
@@ -1714,7 +1764,13 @@ function LeadsPage({ user }: { user: User }) {
         {selectedLead ? (
           <Card className="p-5">
             <SectionTitle title={selectedLead.name} action={<Badge label={selectedLead.status} />} />
-            <p className="text-sm text-muted-foreground">{selectedLead.notes}</p>
+            <div className="grid gap-2 text-sm">
+              <InfoRow label="ID" value={selectedLead.externalId || selectedLead.id} />
+              <InfoRow label="Müşteri Tipi" value={humanize(selectedLead.customerType ?? "KIRACI")} />
+              <InfoRow label="Adres" value={selectedLead.address || "-"} />
+              <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
+            </div>
+            <p className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">{selectedLead.notes}</p>
             <Textarea className="mt-4" placeholder="Lead aksiyonu / not ekle" value={note} onChange={(event) => setNote(event.target.value)} />
             <div className="mt-3 flex gap-2">
               <Button onClick={() => { addLeadAction(selectedLead.id, user.id, note || "Danışman notu eklendi."); setNote(""); }}>Not Ekle</Button>
@@ -1760,10 +1816,11 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
               {leadStages.map((stage) => <option key={stage} value={stage}>{humanize(stage)}</option>)}
             </Select>
           </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-4">
-            <InfoBox label="Bütçe" value={money(lead.budget)} />
-            <InfoBox label="Aradığı bölge" value={lead.preferredLocation ?? lead.interest} />
-            <InfoBox label="Mülk tipi" value={lead.propertyType ?? "Konut"} />
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <InfoBox label="ID" value={lead.externalId || lead.id} />
+            <InfoBox label="Müşteri Tipi" value={humanize(lead.customerType ?? "KIRACI")} />
+            <InfoBox label="Adres" value={lead.address || lead.preferredLocation || "-"} />
+            <InfoBox label="Mülk Sahibi" value={lead.propertyOwner || "-"} />
             <InfoBox label="Danışman" value={consultant?.name ?? "Atanmadı"} />
           </div>
         </Card>
@@ -1826,88 +1883,59 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
 
 function TasksPage({ user }: { user: User }) {
   const { data, updateTask } = useCrm();
-  const [view, setView] = useState<"TABLE" | "KANBAN">("TABLE");
   const tasks = data.tasks.filter((task) => canSeeOffice(user) || task.assignedToId === user.id);
   const columns = ["ACIK", "DEVAM", "TAMAMLANDI"] as const;
+  const columnMeta: Record<(typeof columns)[number], { title: string; description: string }> = {
+    ACIK: { title: "Açık", description: "Başlanacak işler" },
+    DEVAM: { title: "Devam", description: "Üzerinde çalışılan işler" },
+    TAMAMLANDI: { title: "Tamamlandı", description: "Kapanan işler" },
+  };
 
   return (
     <div className="space-y-5">
-      <Toolbar>
-        <Button variant={view === "TABLE" ? "default" : "outline"} onClick={() => setView("TABLE")}>
-          <ClipboardList className="h-4 w-4" />
-          Tablo
-        </Button>
-        <Button variant={view === "KANBAN" ? "default" : "outline"} onClick={() => setView("KANBAN")}>
-          <Columns3 className="h-4 w-4" />
-          Kanban
-        </Button>
-        <div className="ml-auto text-sm text-muted-foreground">{tasks.length} görev</div>
-      </Toolbar>
-
-      {view === "TABLE" ? (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] border-collapse text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">Görev</th>
-                  <th className="px-5 py-3 font-semibold">Tür</th>
-                  <th className="px-5 py-3 font-semibold">Atanan</th>
-                  <th className="px-5 py-3 font-semibold">Öncelik</th>
-                  <th className="px-5 py-3 font-semibold">Tarih</th>
-                  <th className="px-5 py-3 font-semibold">Bağlı Kayıt</th>
-                  <th className="px-5 py-3 font-semibold">Durum</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {tasks.map((task) => {
+      <div className="grid gap-4 md:grid-cols-3">
+        {columns.map((column) => {
+          const columnTasks = tasks.filter((task) => task.status === column);
+          return (
+            <Card key={column} className="min-h-[560px] overflow-hidden">
+              <div className="border-b border-border bg-[#f7fbff] px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-950">{columnMeta[column].title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{columnMeta[column].description}</p>
+                  </div>
+                  <Badge label={`${columnTasks.length}`} />
+                </div>
+              </div>
+              <div className="space-y-3 p-4">
+                {columnTasks.map((task) => {
                   const lead = data.leads.find((item) => item.id === task.leadId);
                   const property = data.properties.find((item) => item.id === task.propertyId);
                   return (
-                    <tr key={task.id} className="bg-white hover:bg-slate-50">
-                      <td className="px-5 py-4 font-medium">{task.title}</td>
-                      <td className="px-5 py-4">{humanize(task.type)}</td>
-                      <td className="px-5 py-4">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Atanmadı"}</td>
-                      <td className="px-5 py-4"><Badge label={task.priority} /></td>
-                      <td className="px-5 py-4">{shortDate(task.dueDate)}</td>
-                      <td className="px-5 py-4 text-muted-foreground">{lead?.name ?? property?.title ?? "-"}</td>
-                      <td className="px-5 py-4">
-                        <Select value={task.status} onChange={(event) => updateTask(task.id, { status: event.target.value as typeof task.status })}>
-                          {columns.map((status) => <option key={status} value={status}>{humanize(status)}</option>)}
-                        </Select>
-                      </td>
-                    </tr>
+                    <div key={task.id} className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold text-slate-950">{task.title}</p>
+                        <Badge label={task.priority} />
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">{humanize(task.type)} · {shortDate(task.dueDate)}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Atanmadı"}</p>
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{lead?.name ?? property?.title ?? task.description}</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {column !== "ACIK" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "ACIK" })}>Açık</Button> : null}
+                        {column !== "DEVAM" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "DEVAM" })}>Devam</Button> : null}
+                        {column !== "TAMAMLANDI" ? <Button size="sm" onClick={() => updateTask(task.id, { status: "TAMAMLANDI" })}>Tamamlandı</Button> : null}
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-3">
-          {columns.map((column) => (
-            <Card key={column} className="min-h-[520px] p-4">
-              <SectionTitle title={humanize(column)} action={tasks.filter((task) => task.status === column).length} />
-              <div className="space-y-3">
-                {tasks.filter((task) => task.status === column).map((task) => (
-                  <div key={task.id} className="rounded-md border border-border bg-white p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold">{task.title}</p>
-                      <Badge label={task.priority} />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">{humanize(task.type)} · {shortDate(task.dueDate)}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Atanmadı"}</p>
-                    <div className="mt-3 flex gap-2">
-                      {column !== "DEVAM" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "DEVAM" })}>Devam</Button> : null}
-                      {column !== "TAMAMLANDI" ? <Button size="sm" onClick={() => updateTask(task.id, { status: "TAMAMLANDI" })}>Tamamla</Button> : null}
-                    </div>
-                  </div>
-                ))}
+                {!columnTasks.length ? (
+                  <div className="rounded-lg border border-dashed border-blue-100 bg-white p-5 text-sm text-muted-foreground">Bu kolonda görev yok.</div>
+                ) : null}
               </div>
             </Card>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
