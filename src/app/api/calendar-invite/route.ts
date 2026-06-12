@@ -41,5 +41,9 @@ export async function POST(request: Request) {
     organizerEmail,
   });
 
+  if (!result.sent) {
+    return NextResponse.json(result, { status: 503 });
+  }
+
   return NextResponse.json(result);
 }
