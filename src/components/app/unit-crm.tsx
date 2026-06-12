@@ -12,14 +12,17 @@ import type { z } from "zod";
 import {
   Bell,
   Building2,
+  CalendarPlus,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
   CalendarDays,
+  Clock3,
   Download,
   ExternalLink,
   FileSpreadsheet,
   FolderOpen,
+  FolderPlus,
   Home,
   LineChart,
   LogOut,
@@ -32,6 +35,7 @@ import {
   Settings,
   Trash2,
   Upload,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -291,10 +295,10 @@ export function CrmApp({ slug }: CrmAppProps) {
   const activeClient = clientForUser(data, user);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-[#f5f7fb] text-foreground">
       <MobileTopbar onMenu={() => setSidebarOpen(true)} user={user} client={activeClient} />
       <div className="flex min-h-screen w-full">
-        <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 border-r border-border bg-white px-4 py-4 lg:block">
+        <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 border-r border-slate-200/70 bg-white/85 px-4 py-5 backdrop-blur-xl lg:block">
           <Sidebar user={user} client={activeClient} currentPath={currentPath} nav={visibleNav} />
         </aside>
 
@@ -302,7 +306,7 @@ export function CrmApp({ slug }: CrmAppProps) {
           {sidebarOpen ? (
             <motion.div className="fixed inset-0 z-50 bg-slate-950/25 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.aside
-                className="h-full w-80 bg-white p-4"
+                className="h-full w-80 bg-white/95 p-4 backdrop-blur-xl"
                 initial={{ x: -340 }}
                 animate={{ x: 0 }}
                 exit={{ x: -340 }}
@@ -317,7 +321,7 @@ export function CrmApp({ slug }: CrmAppProps) {
           ) : null}
         </AnimatePresence>
 
-        <main className="min-w-0 flex-1 px-4 py-5 md:px-7 lg:px-8">
+        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10">
           <PageHeader slug={slug} user={user} client={activeClient} />
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <RouteRenderer slug={slug} user={user} />
@@ -342,7 +346,7 @@ function LoadingScreen() {
 function MobileTopbar({ onMenu, user, client }: { onMenu: () => void; user: User; client?: OfficeClient }) {
   const name = workspaceName(user, client);
   return (
-    <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+    <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200/70 bg-white/90 px-4 py-3 backdrop-blur-xl lg:hidden">
       <Button variant="ghost" size="icon" onClick={onMenu}>
         <Menu className="h-5 w-5" />
       </Button>
@@ -359,15 +363,15 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
   const name = workspaceName(user, client);
   return (
     <div className="flex h-full flex-col">
-      <div className={`mb-7 px-2 ${client?.logoUrl ? "space-y-2" : "flex items-center gap-3"}`}>
+      <div className={`mb-8 px-2 ${client?.logoUrl ? "space-y-2" : "flex items-center gap-3"}`}>
         <ClientLogoMark client={client} fallbackName={name} />
         <div>
           {!client?.logoUrl ? <p className="text-base font-semibold">{name}</p> : null}
-          <p className="text-xs text-muted-foreground">{workspaceSubtitle(user)}</p>
+          <p className="text-xs font-medium text-slate-500">{workspaceSubtitle(user)}</p>
         </div>
       </div>
 
-      <nav className="space-y-1">
+      <nav className="space-y-1.5">
         {nav.map((item) => {
           const Icon = item.icon;
           const active = currentPath === item.href || currentPath.startsWith(`${item.href}/`);
@@ -376,18 +380,18 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
               href={item.href}
               key={item.href}
               onClick={onNavigate}
-              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${
-                active ? "bg-slate-100 text-slate-950" : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                active ? "bg-blue-50 text-[#143a72] shadow-sm shadow-blue-950/[0.03]" : "text-slate-600 hover:bg-white hover:text-slate-950"
               }`}
             >
-              <Icon className={`h-4 w-4 ${active ? "text-primary" : "text-slate-400"}`} />
+              <Icon className={`h-4 w-4 stroke-[1.7] ${active ? "text-primary" : "text-slate-400"}`} />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="mt-auto rounded-lg border border-border bg-white p-3 shadow-sm">
+      <div className="mt-auto rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.07)]">
         <div className="flex items-center gap-3">
           <Avatar user={user} />
           <div className="min-w-0">
@@ -395,7 +399,7 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
             <p className="truncate text-xs text-muted-foreground">{roleLabel(user.role)}</p>
           </div>
         </div>
-        <Button className="mt-3 w-full justify-start" variant="outline" size="sm" onClick={() => signOut({ callbackUrl: "/login" })}>
+        <Button className="mt-3 h-9 w-full justify-start rounded-xl border-slate-200 bg-white/80" variant="outline" size="sm" onClick={() => signOut({ callbackUrl: "/login" })}>
           <LogOut className="h-4 w-4" />
           Çıkış Yap
         </Button>
@@ -405,7 +409,7 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
 }
 
 function Avatar({ user }: { user: User }) {
-  return <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${user.avatarColor} text-xs font-semibold text-white`}>{initials(user.name)}</div>;
+  return <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${user.avatarColor} text-xs font-semibold text-white shadow-sm shadow-blue-950/10`}>{initials(user.name)}</div>;
 }
 
 function ClientLogoMark({ client, fallbackName, compact = false }: { client?: OfficeClient; fallbackName: string; compact?: boolean }) {
@@ -418,7 +422,7 @@ function ClientLogoMark({ client, fallbackName, compact = false }: { client?: Of
   }
 
   return (
-    <div className={`flex shrink-0 items-center justify-center rounded-md bg-slate-950 text-white ${compact ? "h-8 w-8" : "h-9 w-9"}`}>
+    <div className={`flex shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm shadow-blue-950/10 ${compact ? "h-8 w-8" : "h-9 w-9"}`}>
       <Building2 className={compact ? "h-4 w-4" : "h-5 w-5"} />
       <span className="sr-only">{fallbackName}</span>
     </div>
@@ -453,21 +457,21 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   const unreadCount = visibleNotifications.filter((item) => item.status === "OKUNMADI").length;
 
   return (
-    <header className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+    <header className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-center">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{workspaceName(user, client)} · {roleLabel(user.role)}</p>
+        <h1 className="text-[28px] font-semibold tracking-tight text-slate-950">{title}</h1>
+        <p className="mt-1 text-sm font-medium text-slate-500">{workspaceName(user, client)} · {roleLabel(user.role)}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="rounded-md border border-border bg-white px-3 py-2 text-sm text-muted-foreground">Bugün: {todayLabel}</div>
+        <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm shadow-blue-950/[0.03]">Bugün: {todayLabel}</div>
         <div className="relative">
           <Button
-            className="relative bg-white text-slate-700 hover:bg-[#f3f8ff] hover:text-primary"
+            className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-4 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
             variant="outline"
             onClick={() => setNotificationOpen((open) => !open)}
             aria-label="Bildirimler"
           >
-            <Bell className="h-4 w-4" />
+            <Bell className="h-4 w-4 stroke-[1.8]" />
             Bildirimler
             {unreadCount ? (
               <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
@@ -476,7 +480,7 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
             ) : null}
           </Button>
           {notificationOpen ? (
-            <Card className="absolute right-0 top-12 z-50 w-[min(92vw,380px)] overflow-hidden shadow-xl shadow-blue-950/10">
+            <Card className="absolute right-0 top-12 z-50 w-[min(92vw,380px)] overflow-hidden rounded-2xl border-slate-200/80 shadow-xl shadow-blue-950/10">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-950">Bildirimler</p>
@@ -777,6 +781,7 @@ function Dashboard({ user }: { user: User }) {
   const { data } = useCrm();
   const today = useMemo(() => new Date(), []);
   if (user.role === "ADMIN") return <PlatformAdminDashboard user={user} />;
+  const cardShell = "rounded-[22px] border-slate-200/70 bg-white/90 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur";
   const scopedProperties = canSeeOffice(user) ? data.properties : data.properties.filter((item) => item.consultantId === user.id);
   const scopedLeads = canSeeOffice(user) ? data.leads : data.leads.filter((item) => item.consultantId === user.id);
   const scopedTasks = canSeeOffice(user) ? data.tasks : data.tasks.filter((item) => item.assignedToId === user.id);
@@ -826,79 +831,241 @@ function Dashboard({ user }: { user: User }) {
       month: countFor("AYLIK"),
     };
   });
+  const dailyPlanItems = todayTasks.slice(0, 4);
+  const quickActions = [
+    { label: "Lead Ekle", href: "/musteriler", icon: UserPlus, tone: "bg-blue-50 text-blue-600" },
+    { label: "Portföy Ekle", href: "/portfoyler/yeni", icon: FolderPlus, tone: "bg-violet-50 text-violet-600" },
+    { label: "Görev Oluştur", href: "/gorevler", icon: CheckCircle2, tone: "bg-cyan-50 text-cyan-600" },
+    { label: "Randevu Ekle", href: "/takvim", icon: CalendarPlus, tone: "bg-rose-50 text-rose-600" },
+  ];
+  const fallbackActivities = [
+    { id: "activity-new-lead", title: "Yeni lead eklendi", time: "-", icon: UserPlus, tone: "bg-emerald-50 text-emerald-600" },
+    { id: "activity-property-updated", title: "Portföy güncellendi", time: "-", icon: FolderPlus, tone: "bg-blue-50 text-blue-600" },
+    { id: "activity-task-completed", title: "Görev tamamlandı", time: "-", icon: CheckCircle2, tone: "bg-orange-50 text-orange-600" },
+    { id: "activity-appointment-created", title: "Randevu oluşturuldu", time: "-", icon: CalendarPlus, tone: "bg-pink-50 text-pink-600" },
+  ];
+  const liveActivities = data.activityLogs.slice(0, 4).map((log, index) => {
+    const fallback = fallbackActivities[index] ?? fallbackActivities[0];
+    return { id: log.id, title: log.action, time: shortDate(log.createdAt), icon: fallback.icon, tone: fallback.tone };
+  });
+  const activityItems = liveActivities.length ? liveActivities : fallbackActivities;
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <Metric label="Aktif portföy" value={scopedProperties.filter((item) => item.status === "AKTIF").length.toString()} detail={`${activeSale} satılık · ${activeRent} kiralık`} />
-        <Metric label="Aktif kiracı" value={activeTenants.length.toString()} detail="Kiracı var işaretli kayıt" />
-        <Metric label="Yeni lead" value={scopedLeads.filter((item) => item.status === "YENI_LEAD").length.toString()} detail="İlk temas bekliyor" />
-        <Metric label="Bugünkü görev" value={todayTasks.length.toString()} detail="Açık operasyon" />
-        <Metric label="Yaklaşan randevu" value={appointments.length.toString()} detail="Randevu / yer gösterimi" />
-        <Metric label="Kira hatırlatma" value={tenantReminders.length.toString()} detail="7/5/3 gün ve çıkış günü" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <Metric
+          label="Aktif portföy"
+          value={scopedProperties.filter((item) => item.status === "AKTIF").length.toString()}
+          detail={`${activeSale} satılık · ${activeRent} kiralık`}
+          icon={<FolderOpen className="h-4 w-4" />}
+          iconClassName="bg-violet-50 text-violet-600"
+          progressClassName="bg-violet-400"
+          progress={30}
+        />
+        <Metric
+          label="Aktif kiracı"
+          value={activeTenants.length.toString()}
+          detail="Kiracı var işaretli kayıt"
+          icon={<Users className="h-4 w-4" />}
+          iconClassName="bg-emerald-50 text-emerald-600"
+          progressClassName="bg-emerald-400"
+          progress={34}
+        />
+        <Metric
+          label="Yeni lead"
+          value={scopedLeads.filter((item) => item.status === "YENI_LEAD").length.toString()}
+          detail="İlk temas bekliyor"
+          icon={<UserPlus className="h-4 w-4" />}
+          iconClassName="bg-blue-50 text-blue-600"
+          progressClassName="bg-blue-300"
+          progress={28}
+        />
+        <Metric
+          label="Bugünkü görev"
+          value={todayTasks.length.toString()}
+          detail="Açık operasyon"
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          iconClassName="bg-orange-50 text-orange-600"
+          progressClassName="bg-orange-300"
+          progress={28}
+        />
+        <Metric
+          label="Yaklaşan randevu"
+          value={appointments.length.toString()}
+          detail="Randevu / yer gösterimi"
+          icon={<CalendarDays className="h-4 w-4" />}
+          iconClassName="bg-pink-50 text-pink-600"
+          progressClassName="bg-pink-300"
+          progress={31}
+        />
+        <Metric
+          label="Kira hatırlatma"
+          value={tenantReminders.length.toString()}
+          detail="7/5/3 gün ve çıkış günü"
+          icon={<Bell className="h-4 w-4" />}
+          iconClassName="bg-cyan-50 text-cyan-600"
+          progressClassName="bg-cyan-400"
+          progress={29}
+        />
       </div>
 
       <div className={`grid gap-5 ${canSeeOffice(user) ? "xl:grid-cols-[1fr_1fr]" : ""}`}>
-          <Card className="p-5">
+          <Card className={`${cardShell} p-5`}>
             <SectionTitle title="Satış / Kiralama Raporu" action={canSeeOffice(user) ? "Ofis geneli" : "Kişisel"} />
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-3">
               {reportRanges.map((report) => (
-                <div key={report.range} className="rounded-md border border-border bg-white p-4">
-                  <p className="text-sm font-semibold text-slate-950">{report.label}</p>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <InfoRow label="Satış" value={report.sale.toString()} />
-                    <InfoRow label="Kiralama" value={report.rent.toString()} />
-                    <InfoRow label="Müşteri" value={report.leads.toString()} />
-                    <InfoRow label="Görev" value={report.tasks.toString()} />
+                <div key={report.range} className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm shadow-blue-950/[0.03]">
+                  <div className="mb-4 flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-primary">
+                      <CalendarDays className="h-4 w-4 stroke-[1.8]" />
+                    </span>
+                    <p className="text-sm font-semibold text-slate-950">{report.label}</p>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <ReportMetricLine label="Satış" value={report.sale.toString()} />
+                    <ReportMetricLine label="Kiralama" value={report.rent.toString()} />
+                    <ReportMetricLine label="Müşteri" value={report.leads.toString()} />
+                    <ReportMetricLine label="Görev" value={report.tasks.toString()} />
                   </div>
                 </div>
               ))}
             </div>
           </Card>
           {canSeeOffice(user) ? (
-          <Card className="overflow-hidden">
+          <Card className={`${cardShell} overflow-hidden`}>
             <SectionTitle title="Danışman Bazlı Rapor" action="Sadece owner görünümü" padded />
-            <div className="overflow-x-auto">
+            <div className="px-5 pb-5">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white/70">
               <table className="w-full min-w-[560px] border-collapse text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-slate-50/90 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-5 py-3 font-semibold">Danışman</th>
-                    <th className="px-5 py-3 font-semibold">Bugün</th>
-                    <th className="px-5 py-3 font-semibold">Bu hafta</th>
-                    <th className="px-5 py-3 font-semibold">Bu ay</th>
+                    <th className="px-5 py-4 font-semibold">Danışman</th>
+                    <th className="px-5 py-4 font-semibold">Bugün</th>
+                    <th className="px-5 py-4 font-semibold">Bu hafta</th>
+                    <th className="px-5 py-4 font-semibold">Bu ay</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-slate-200/80">
                   {consultantReportRows.map((row) => (
-                    <tr key={row.id} className="bg-white">
-                      <td className="px-5 py-4 font-medium">{row.name}</td>
-                      <td className="px-5 py-4">{row.today}</td>
-                      <td className="px-5 py-4">{row.week}</td>
-                      <td className="px-5 py-4">{row.month}</td>
+                    <tr key={row.id} className="bg-white/80 transition hover:bg-blue-50/40">
+                      <td className="px-5 py-5 font-medium">{row.name}</td>
+                      <td className="px-5 py-5">{row.today}</td>
+                      <td className="px-5 py-5">{row.week}</td>
+                      <td className="px-5 py-5">{row.month}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </Card>
           ) : null}
       </div>
 
-      <Card className="p-5">
-        <SectionTitle title="Kira Sözleşmesi Hatırlatmaları" action={`${tenantReminders.length} bildirim`} />
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <Card className={`${cardShell} overflow-hidden`}>
+        <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+              <Bell className="h-5 w-5 stroke-[1.8]" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">Kira Sözleşmesi Hatırlatmaları</h2>
+              {!tenantReminders.length ? <p className="mt-1 text-sm leading-6 text-slate-500">7, 5, 3 gün kalan veya bugün çıkışı olan kiracı kaydı yok.</p> : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            {!tenantReminders.length ? (
+              <div className="hidden h-14 w-32 items-center justify-center rounded-full bg-violet-50/70 text-violet-300 md:flex">
+                <CheckCircle2 className="h-8 w-8 stroke-[1.6]" />
+              </div>
+            ) : null}
+            <Link href="/musteriler" className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-4 py-2 text-sm font-semibold text-primary shadow-sm shadow-blue-950/[0.03] transition hover:bg-blue-50">
+              {tenantReminders.length} bildirim
+              <ChevronRight className="h-4 w-4 stroke-[1.8]" />
+            </Link>
+          </div>
+        </div>
+        {tenantReminders.length ? (
+        <div className="grid gap-3 border-t border-slate-200/70 px-5 pb-5 pt-4 md:grid-cols-2 xl:grid-cols-4">
           {tenantReminders.slice(0, 8).map((notification) => (
-            <div key={notification.id} className="rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm">
+            <div key={notification.id} className="rounded-2xl border border-blue-100 bg-[#f7fbff] p-3 text-sm shadow-sm shadow-blue-950/[0.03]">
               <p className="font-semibold text-slate-950">{notification.title}</p>
               <p className="mt-1 leading-5 text-muted-foreground">{notification.message}</p>
             </div>
           ))}
-          {!tenantReminders.length ? <p className="text-sm text-muted-foreground">7, 5, 3 gün kalan veya bugün çıkışı olan kiracı kaydı yok.</p> : null}
         </div>
+        ) : null}
       </Card>
 
+      <div className="grid gap-5 xl:grid-cols-[0.95fr_0.95fr_1.15fr]">
+        <Card className={`${cardShell} p-5`}>
+          <SectionTitle title="Hızlı İşlemler" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link key={action.href} href={action.href} className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-sm font-semibold text-slate-800 shadow-sm shadow-blue-950/[0.03] transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/50">
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${action.tone}`}>
+                    <Icon className="h-4 w-4 stroke-[1.8]" />
+                  </span>
+                  {action.label}
+                </Link>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card className={`${cardShell} p-5`}>
+          <SectionTitle title="Günlük Planım" action={<Link href="/takvim">Tümünü Gör</Link>} />
+          {dailyPlanItems.length ? (
+            <div className="space-y-3">
+              {dailyPlanItems.map((task) => (
+                <div key={task.id} className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-primary">
+                    <Clock3 className="h-4 w-4 stroke-[1.8]" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900">{task.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">{shortDate(task.dueDate)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-40 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 p-6 text-center">
+              <div>
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                  <CalendarDays className="h-6 w-6 stroke-[1.6]" />
+                </div>
+                <p className="mt-3 text-sm text-slate-500">Bugün için planlanmış etkinlik bulunmuyor.</p>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <Card className={`${cardShell} p-5`}>
+          <SectionTitle title="Son Aktiviteler" action="Tümünü Gör" />
+          <div className="space-y-3">
+            {activityItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.id} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200/60 bg-white/80 px-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                      <Icon className="h-4 w-4 stroke-[1.8]" />
+                    </span>
+                    <p className="truncate text-sm font-medium text-slate-800">{item.title}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-slate-400">{item.time}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <Card className="p-5">
+        <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Satış / Kiralama Pipeline" action="Son 6 ay" />
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -920,7 +1087,7 @@ function Dashboard({ user }: { user: User }) {
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Portföy Durumu" action="Canlı" />
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -938,18 +1105,18 @@ function Dashboard({ user }: { user: User }) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
-        <Card className="p-5">
+        <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Lead Pipeline" action={<Link href="/musteriler">Leadleri Gör</Link>} />
           <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
             {pipelineData.map((stage) => (
-              <div key={stage.name} className="rounded-md border border-border bg-white p-3">
+              <div key={stage.name} className="rounded-2xl border border-slate-200/70 bg-white/80 p-3 shadow-sm shadow-blue-950/[0.03]">
                 <p className="text-xs text-muted-foreground">{stage.name}</p>
                 <p className="mt-3 text-2xl font-semibold text-slate-950">{stage.value}</p>
               </div>
             ))}
           </div>
         </Card>
-        <Card className="p-5">
+        <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Danışman Performansı" action="Ofis" />
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
@@ -967,7 +1134,7 @@ function Dashboard({ user }: { user: User }) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
-        <Card className="overflow-hidden">
+        <Card className={`${cardShell} overflow-hidden`}>
           <SectionTitle title={canSeeOffice(user) ? "Premium Portföy Akışı" : "Atanmış Portföylerim"} action={<Link href="/portfoyler">Tümünü Gör</Link>} padded />
           <div className="divide-y divide-border">
             {scopedProperties.slice(0, 5).map((property) => (
@@ -982,11 +1149,11 @@ function Dashboard({ user }: { user: User }) {
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className={`${cardShell} p-5`}>
           <SectionTitle title="Bekleyen İşler" action={`${scopedTasks.filter((item) => item.status !== "TAMAMLANDI").length} açık`} />
           <div className="space-y-3">
             {scopedTasks.slice(0, 6).map((task) => (
-              <div key={task.id} className="flex items-start gap-3 rounded-md border border-border p-3">
+              <div key={task.id} className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-3 shadow-sm shadow-blue-950/[0.03]">
                 <CheckCircle2 className={`mt-0.5 h-4 w-4 ${task.status === "TAMAMLANDI" ? "text-success" : "text-primary"}`} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{task.title}</p>
@@ -999,29 +1166,51 @@ function Dashboard({ user }: { user: User }) {
           </div>
         </Card>
       </div>
-
-      <Card className="overflow-hidden">
-        <SectionTitle title="Son Aktiviteler" padded />
-        <div className="divide-y divide-border">
-          {data.activityLogs.slice(0, 5).map((log) => (
-            <div key={log.id} className="flex items-center justify-between px-5 py-3 text-sm">
-              <span>{log.action}</span>
-              <span className="text-xs text-muted-foreground">{shortDate(log.createdAt)}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
 
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Metric({
+  label,
+  value,
+  detail,
+  icon,
+  iconClassName = "bg-blue-50 text-primary",
+  progressClassName = "bg-primary",
+  progress = 30,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon?: React.ReactNode;
+  iconClassName?: string;
+  progressClassName?: string;
+  progress?: number;
+}) {
   return (
-    <Card className="p-5">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-      <p className="mt-2 text-xs text-muted-foreground">{detail}</p>
+    <Card className="min-h-[170px] rounded-[22px] border-slate-200/70 bg-white/90 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+        </div>
+        {icon ? <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${iconClassName}`}>{icon}</span> : null}
+      </div>
+      <p className="mt-3 text-xs font-medium leading-5 text-slate-500">{detail}</p>
+      <div className="mt-5 h-1.5 rounded-full bg-slate-100">
+        <div className={`h-full rounded-full ${progressClassName}`} style={{ width: `${progress}%` }} />
+      </div>
     </Card>
+  );
+}
+
+function ReportMetricLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-slate-500">{label}</span>
+      <span className="flex-1 border-b border-slate-200/80" />
+      <span className="font-semibold text-slate-950">{value}</span>
+    </div>
   );
 }
 
@@ -1036,9 +1225,13 @@ function EmptyState({ title, description }: { title: string; description: string
 
 function SectionTitle({ title, action, padded }: { title: string; action?: React.ReactNode; padded?: boolean }) {
   return (
-    <div className={`mb-4 flex items-center justify-between gap-3 ${padded ? "border-b border-border px-5 py-4" : ""}`}>
+    <div className={`mb-4 flex items-center justify-between gap-3 ${padded ? "border-b border-slate-200/70 px-5 py-4" : ""}`}>
       <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-      {action ? <div className="text-sm font-medium text-primary">{action}</div> : null}
+      {action ? (
+        <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/80 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm shadow-blue-950/[0.03]">
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }
