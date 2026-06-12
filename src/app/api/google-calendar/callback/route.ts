@@ -52,7 +52,8 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.redirect(appUrl("/takvim?googleCalendar=connected"));
-  } catch {
+  } catch (error) {
+    console.error("Google Calendar OAuth callback failed", error);
     return NextResponse.redirect(appUrl("/entegrasyonlar?googleCalendar=error"));
   }
 }
