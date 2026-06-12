@@ -2996,24 +2996,20 @@ function CalendarPage({ user }: { user: User }) {
           organizerEmail,
         }),
       });
-      const result = await response.json() as { sent?: boolean; mode?: "email" | "mailto"; calendarUrl?: string; mailtoUrl?: string; error?: string };
+      const result = await response.json() as { sent?: boolean; mode?: "email"; calendarUrl?: string; error?: string };
 
       if (!response.ok) {
-        toast.error(result.error ?? "E-posta daveti hazırlanamadı.");
+        updateTask(id, { calendarInviteStatus: "Davet gönderilemedi" });
+        toast.error(result.error ?? "Davet gönderilemedi.");
         return;
       }
 
       updateTask(id, {
         calendarInviteUrl: result.calendarUrl,
-        calendarInviteStatus: result.sent ? "E-posta gönderildi" : "Mail hazırlandı",
+        calendarInviteStatus: result.sent ? "Davet gönderildi" : "Davet gönderilemedi",
       });
       if (result.sent) {
-        toast.success("E-posta daveti gönderildi");
-        return;
-      }
-      if (result.mailtoUrl) {
-        window.location.href = result.mailtoUrl;
-        toast.info("Mail uygulaması hazır davet metniyle açıldı");
+        toast.success("Takvim daveti gönderildi");
         return;
       }
       toast.success("Takvim daveti hazırlandı");
@@ -3084,9 +3080,7 @@ function CalendarPage({ user }: { user: User }) {
                     <div className="mt-2 flex flex-wrap gap-2">
                       {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
                       {task.googleCalendarResponseStatus && !task.calendarInviteStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
-                      {task.calendarInviteUrl ? (
-                        <a className="text-xs font-medium text-primary" href={task.calendarInviteUrl} target="_blank" rel="noreferrer">Takvime ekle</a>
-                      ) : task.googleCalendarHtmlLink ? (
+                      {task.googleCalendarHtmlLink ? (
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
                     </div>
@@ -3129,18 +3123,6 @@ function CalendarPage({ user }: { user: User }) {
               Takvime Ekle ve Davet Gönder
             </Button>
           </div>
-        </Card>
-        <Card className="p-5">
-          <SectionTitle title="E-posta Daveti" action={<Badge label="Takvime Ekle" />} />
-          <p className="text-sm leading-6 text-muted-foreground">Randevu ve görev daveti şirket adıyla hazırlanır. Mail içindeki Takvime Ekle bağlantısı Google, Apple ve Outlook takvimlerinde açılır.</p>
-          <div className="mt-4 space-y-3 text-sm">
-            <InfoRow label="Şirket" value={companyName} />
-            <InfoRow label="Gönderen" value={organizerEmail} />
-            <InfoRow label="Mail servisi" value="Bağlanınca otomatik gönderim" />
-          </div>
-          <p className="mt-4 rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
-            Mail servisi canlıya bağlanana kadar sistem hazır davet metniyle mail uygulamasını açar.
-          </p>
         </Card>
       </div>
     </div>
@@ -3655,10 +3637,17 @@ function SettingsPage({ user }: { user: User }) {
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+    <div className="space-y-5">
       <Card className="p-5">
-        <SectionTitle title="Ekibine Kullanıcı Ekle" action={<Badge label={`${members.length}/${OFFICE_USER_LIMIT}`} />} />
-        <div className="space-y-4">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+          <div>
+            <SectionTitle title="Ekibine Kullanıcı Ekle" action={<Badge label={`${members.length}/${OFFICE_USER_LIMIT}`} />} />
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Owner dahil toplam {OFFICE_USER_LIMIT} kullanıcı hakkı var. Kalan hak: {remainingSlots}. Danışmanlar portföy, müşteri ve görev girişlerini kendi panelinden yapar.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-5">
           <Field label="Ad soyad"><Input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Örn: Yeni Danışman" /></Field>
           <Field label="E-posta"><Input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="danisman@unitglobal.com" /></Field>
           <Field label="Telefon"><Input value={newUserPhone} onChange={(event) => setNewUserPhone(event.target.value)} placeholder="+90 5xx xxx xx xx" /></Field>
@@ -3668,95 +3657,74 @@ function SettingsPage({ user }: { user: User }) {
               <option value="CONSULTANT">Danışman</option>
             </Select>
           </Field>
-          <Button className="w-full" variant="outline" onClick={saveOfficeInviteEmail}>
-            Ofis Davet E-postasını Kaydet
-          </Button>
-          <Button className="w-full" onClick={createUser} disabled={remainingSlots <= 0}>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          <Button className="sm:w-auto" onClick={createUser} disabled={remainingSlots <= 0}>
             <Plus className="h-4 w-4" />
             Kullanıcı Ekle
           </Button>
-          <p className="rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
-            Owner dahil toplam {OFFICE_USER_LIMIT} kullanıcı hakkı var. Kalan hak: {remainingSlots}. Danışmanlar portföy, müşteri ve görev girişlerini kendi panelinden yapar.
-          </p>
+          <Button className="sm:w-auto" variant="outline" onClick={saveOfficeInviteEmail}>
+            Ofis Davet E-postasını Kaydet
+          </Button>
         </div>
       </Card>
-      <Card className="p-5">
-        <SectionTitle title="Ekip Kullanıcıları" />
-        <p className="mb-4 rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
-          Davet e-postası Google Calendar davetleri ve ekip bildirimleri için kullanılır. Demo giriş kullanıcı adları sabit kalır.
-        </p>
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Kullanıcı</th>
-                <th className="px-4 py-3 font-semibold">Davet e-postası</th>
-                <th className="px-4 py-3 font-semibold">Rol</th>
-                <th className="px-4 py-3 font-semibold">Telefon</th>
-                <th className="px-4 py-3 font-semibold">Durum</th>
-                <th className="px-4 py-3 font-semibold">İşlem</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-white">
-              {members.map((member) => (
-                <tr key={member.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar user={member} />
-                      <div>
-                        <p className="font-medium text-slate-950">{member.name}</p>
-                        <p className="text-xs text-muted-foreground">Giriş: {member.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex min-w-[260px] gap-2">
-                      <Input
-                        type="email"
-                        value={emailDrafts[member.id] ?? calendarEmailForUser(member)}
-                        onChange={(event) => setEmailDrafts((current) => ({ ...current, [member.id]: event.target.value }))}
-                      />
-                      <Button size="sm" variant="outline" onClick={() => saveCalendarEmail(member)}>
-                        Kaydet
-                      </Button>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">{roleLabel(member.role)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{member.phone}</td>
-                  <td className="px-4 py-3"><Badge label={member.active ? "Aktif" : "Pasif"} /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={member.role === "OFFICE_MANAGER"}
-                        onClick={() => updateUser(member.id, { active: !member.active })}
-                      >
-                        {member.active ? "Pasifleştir" : "Aktifleştir"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={member.role === "OFFICE_MANAGER"}
-                        onClick={() => {
-                          if (window.confirm(`${member.name} silinsin mi? Bağlı kayıtlar ofis sahibine devredilecek.`)) {
-                            deleteUser(member.id, user.id);
-                          }
-                        }}
-                      >
-                        Sil
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <InfoBox label="Kullanıcı limiti" value={`${members.length}/${OFFICE_USER_LIMIT}`} />
-          <InfoBox label="Aktif danışman" value={members.filter((member) => member.role === "CONSULTANT" && member.active).length.toString()} />
-          <InfoBox label="Kalan hak" value={remainingSlots.toString()} />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <InfoBox label="Kullanıcı limiti" value={`${members.length}/${OFFICE_USER_LIMIT}`} />
+        <InfoBox label="Aktif danışman" value={members.filter((member) => member.role === "CONSULTANT" && member.active).length.toString()} />
+        <InfoBox label="Kalan hak" value={remainingSlots.toString()} />
+      </div>
+
+      <Card className="overflow-hidden">
+        <SectionTitle title="Ekip Kullanıcıları" padded />
+        <div className="divide-y divide-border">
+          {members.map((member) => (
+            <div key={member.id} className="grid gap-4 bg-white p-5 xl:grid-cols-[1.1fr_1.4fr_0.7fr_0.8fr_auto] xl:items-center">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar user={member} />
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-950">{member.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">Giriş: {member.email}</p>
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+                <Input
+                  className="min-w-0"
+                  type="email"
+                  value={emailDrafts[member.id] ?? calendarEmailForUser(member)}
+                  onChange={(event) => setEmailDrafts((current) => ({ ...current, [member.id]: event.target.value }))}
+                />
+                <Button className="shrink-0" size="sm" variant="outline" onClick={() => saveCalendarEmail(member)}>
+                  Kaydet
+                </Button>
+              </div>
+              <div className="text-sm text-slate-700">{roleLabel(member.role)}</div>
+              <div className="text-sm text-muted-foreground">{member.phone}</div>
+              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <Badge label={member.active ? "Aktif" : "Pasif"} />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={member.role === "OFFICE_MANAGER"}
+                  onClick={() => updateUser(member.id, { active: !member.active })}
+                >
+                  {member.active ? "Pasifleştir" : "Aktifleştir"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={member.role === "OFFICE_MANAGER"}
+                  onClick={() => {
+                    if (window.confirm(`${member.name} silinsin mi? Bağlı kayıtlar ofis sahibine devredilecek.`)) {
+                      deleteUser(member.id, user.id);
+                    }
+                  }}
+                >
+                  Sil
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       </Card>
     </div>
