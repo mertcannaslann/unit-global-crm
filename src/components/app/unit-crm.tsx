@@ -1609,41 +1609,66 @@ function parseLeadRows(rows: unknown[][], consultantId: string): LeadImportPaylo
   const knownHeaders = [
     "ad",
     "adsoyad",
+    "adsoyadi",
     "adres",
     "address",
     "bolge",
+    "client",
+    "clientname",
+    "clienttype",
+    "comment",
+    "comments",
+    "customer",
+    "customername",
+    "customertype",
     "email",
     "eposta",
+    "evsahibi",
+    "fullname",
+    "gsm",
     "id",
+    "isim",
+    "kayitno",
+    "kaynak",
     "mail",
     "malik",
+    "mobile",
     "mulksahibi",
     "musteri",
     "musteriid",
+    "musterino",
     "musteritipi",
+    "musterituru",
     "not",
+    "notlar",
     "notes",
+    "owner",
     "phone",
     "propertyowner",
+    "remark",
+    "remarks",
     "semt",
+    "source",
     "telefon",
+    "telephone",
+    "type",
   ];
   const hasHeader = header.some((cell) => knownHeaders.includes(cell));
   const bodyRows = hasHeader ? rows.slice(1) : rows;
   const findIndex = (keys: string[]) => keys.map((key) => header.indexOf(key)).find((index) => index !== -1) ?? -1;
   const indexMap = {
-    name: hasHeader ? findIndex(["adsoyad", "ad", "musteri", "isim", "name"]) : 0,
-    phone: hasHeader ? findIndex(["telefon", "phone", "gsm", "tel"]) : 1,
-    email: hasHeader ? findIndex(["email", "eposta", "mail"]) : 2,
-    source: hasHeader ? findIndex(["kaynak", "source"]) : 3,
+    name: hasHeader ? findIndex(["adsoyad", "adsoyadi", "ad", "musteri", "isim", "name", "fullname", "customer", "customername", "client", "clientname"]) : 0,
+    phone: hasHeader ? findIndex(["telefon", "phone", "gsm", "tel", "telephone", "mobile", "cell", "cep", "ceptelefonu"]) : 1,
+    email: hasHeader ? findIndex(["email", "eposta", "mail", "emailaddress"]) : 2,
+    source: hasHeader ? findIndex(["kaynak", "source", "leadsource"]) : 3,
     budget: hasHeader ? findIndex(["butce", "budget", "bütçe"]) : 4,
-    interest: hasHeader ? findIndex(["ilgi", "interest", "talep", "not"]) : 5,
-    notes: hasHeader ? findIndex(["notlar", "not", "notes", "aciklama", "aciklamalar"]) : 6,
-    externalId: hasHeader ? findIndex(["id", "musteriid", "musterino", "kayitno"]) : 7,
-    address: hasHeader ? findIndex(["adres", "address", "lokasyon", "konum"]) : 8,
-    district: hasHeader ? findIndex(["semt", "bolge", "mahalle", "ilce", "district", "neighborhood", "location"]) : 11,
-    propertyOwner: hasHeader ? findIndex(["mulksahibi", "malik", "propertyowner", "owner", "evsahibi"]) : 9,
-    customerType: hasHeader ? findIndex(["musteritipi", "tip", "tur", "type", "musterituru"]) : 10,
+    interest: hasHeader ? findIndex(["ilgi", "interest", "talep", "request", "requirement", "want", "need", "not"]) : 5,
+    notes: hasHeader ? findIndex(["notlar", "not", "notes", "note", "aciklama", "aciklamalar", "comment", "comments", "remark", "remarks"]) : 6,
+    externalId: hasHeader ? findIndex(["id", "musteriid", "musterino", "kayitno", "recordid", "customerid", "clientid"]) : 7,
+    address: hasHeader ? findIndex(["adres", "address", "lokasyon", "konum", "location", "fulladdress"]) : 8,
+    district: hasHeader ? findIndex(["semt", "bolge", "mahalle", "ilce", "district", "neighborhood", "area", "region"]) : 11,
+    propertyOwner: hasHeader ? findIndex(["mulksahibi", "malik", "propertyowner", "owner", "evsahibi", "landlord"]) : 9,
+    customerType: hasHeader ? findIndex(["musteritipi", "tip", "tur", "type", "musterituru", "customertype", "clienttype"]) : 10,
   };
 
   return bodyRows
@@ -1712,8 +1737,8 @@ function parseBudget(value: unknown) {
 
 function normalizeCustomerType(value: unknown): Lead["customerType"] {
   const normalized = normalizeHeader(value);
-  if (["mulksahibi", "malik", "owner", "propertyowner", "evsahibi"].includes(normalized)) return "MULK_SAHIBI";
-  if (["kiraci", "tenant", "renter"].includes(normalized)) return "KIRACI";
+  if (["mulksahibi", "malik", "owner", "propertyowner", "evsahibi", "landlord", "homeowner", "seller"].includes(normalized)) return "MULK_SAHIBI";
+  if (["kiraci", "tenant", "renter", "buyer", "client", "customer"].includes(normalized)) return "KIRACI";
   return "KIRACI";
 }
 
