@@ -16,7 +16,7 @@ type CrmContextValue = {
   updateProperty: (id: string, patch: Partial<Property>) => void;
   deleteProperty: (id: string) => void;
   addLead: (lead: NewLeadInput) => void;
-  importLeads: (leads: NewLeadInput[], sourceName?: string) => void;
+  importLeads: (leads: NewLeadInput[], sourceName?: string, importedById?: string) => void;
   addLeadAction: (leadId: string, userId: string, note: string) => void;
   updateLead: (id: string, patch: Partial<Lead>) => void;
   addTask: (task: Omit<Task, "id" | "status">) => string;
@@ -36,7 +36,11 @@ const CrmContext = createContext<CrmContextValue | null>(null);
 function normalizeData(saved: CrmData): CrmData {
   const defaultUnitGlobal = defaultClients.find((client) => client.id === "client-unit-global");
   const clients = saved.clients?.length
-    ? saved.clients.map((client) => (client.id === "client-unit-global" && !client.logoUrl ? { ...client, logoUrl: defaultUnitGlobal?.logoUrl } : client))
+    ? saved.clients.map((client) => (client.id === "client-unit-global" ? {
+      ...client,
+      logoUrl: client.logoUrl || defaultUnitGlobal?.logoUrl,
+      inviteFromEmail: client.inviteFromEmail || defaultUnitGlobal?.inviteFromEmail,
+    } : client))
     : defaultClients;
   return {
     ...saved,
@@ -168,8 +172,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       }));
       toast.success("Lead eklendi");
     },
-    importLeads: (leads, sourceName) => {
+    importLeads: (leads, sourceName, importedById) => {
       const now = Date.now();
+      const importedAt = new Date(now).toISOString();
       const cleanLeads = leads.filter((lead) => lead.name.trim());
       if (!cleanLeads.length) {
         toast.error("İçe aktarılacak müşteri bulunamadı");
@@ -191,6 +196,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
               id: existing.id,
               status: existing.status,
               createdAt: existing.createdAt,
+              importedById: importedById ?? existing.importedById,
+              importSource: sourceName ?? existing.importSource,
+              importedAt,
               notes: lead.notes?.trim() || existing.notes || "",
               tenantStatus: existing.tenantStatus ?? lead.tenantStatus ?? "BILINMIYOR",
               tenantName: existing.tenantName ?? lead.tenantName,
@@ -207,14 +215,25 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
               customerType: lead.customerType ?? "MULK_SAHIBI",
               tenantStatus: lead.tenantStatus ?? "BILINMIYOR",
               tenantNotes: lead.tenantNotes ?? "",
+              importedById,
+              importSource: sourceName,
+              importedAt,
               notes: lead.notes?.trim() || "",
               createdAt: new Date(now + index).toISOString(),
             });
             addedCount += 1;
           }
         });
+        const uploader = current.users.find((item) => item.id === importedById)?.name ?? "Bilinmeyen kullanıcı";
+        const activity = {
+          id: `activity-import-${now}`,
+          userId: importedById ?? "system",
+          action: `${sourceName ?? "Dosya"} müşterilere yüklendi: ${addedCount} yeni, ${updatedCount} güncellendi`,
+          entity: "LEAD_IMPORT",
+          createdAt: importedAt,
+        };
 
-        return { ...current, leads: [...leadsToAdd, ...nextLeads] };
+        return { ...current, leads: [...leadsToAdd, ...nextLeads], activityLogs: [{ ...activity, action: `${uploader} · ${activity.action}` }, ...current.activityLogs] };
       });
       toast.success(`${sourceName ?? "Dosya"} işlendi: ${addedCount} yeni, ${updatedCount} güncellendi`);
     },
