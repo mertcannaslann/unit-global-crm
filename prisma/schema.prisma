@@ -232,8 +232,14 @@ model Task {
   description  String
   type         TaskType?
   dueDate      DateTime
+  endDate      DateTime?
+  location     String?
+  reminderMinutes Int    @default(30)
   priority     Priority   @default(ORTA)
   status       TaskStatus @default(ACIK)
+  googleCalendarEventId String?
+  googleCalendarHtmlLink String?
+  googleCalendarResponseStatus String?
   assignedToId String
   createdById  String
   leadId       String?
@@ -242,6 +248,24 @@ model Task {
   createdBy    User       @relation("CreatedTasks", fields: [createdById], references: [id])
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+}
+
+model GoogleCalendarConnection {
+  id               String   @id @default(cuid())
+  userEmail        String   @unique
+  googleEmail      String?
+  calendarId       String   @default("primary")
+  accessToken      String
+  refreshToken     String?
+  scope            String?
+  tokenType        String?
+  expiryDate       DateTime?
+  syncToken        String?
+  channelId        String?
+  resourceId       String?
+  channelExpiresAt DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Notification {
