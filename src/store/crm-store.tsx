@@ -43,7 +43,7 @@ function normalizeData(saved: CrmData): CrmData {
     ...saved,
     clients,
     users: saved.users.map((user) => (user.role === "ADMIN" || user.clientId ? user : { ...user, clientId: clients[0]?.id })),
-    leads: saved.leads.map((lead) => ({ ...lead, customerType: lead.customerType ?? "KIRACI", tenantStatus: lead.tenantStatus ?? "BILINMIYOR" })),
+    leads: saved.leads.map((lead) => ({ ...lead, customerType: lead.customerType ?? "KIRACI", tenantStatus: lead.tenantStatus ?? "BILINMIYOR", tenantNotes: lead.tenantNotes ?? "" })),
   };
 }
 
@@ -163,6 +163,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
               tenantName: existing.tenantName ?? lead.tenantName,
               tenantMoveIn: existing.tenantMoveIn ?? lead.tenantMoveIn,
               tenantMoveOut: existing.tenantMoveOut ?? lead.tenantMoveOut,
+              tenantNotes: existing.tenantNotes ?? lead.tenantNotes ?? "",
             };
             updatedCount += 1;
           } else {
@@ -172,6 +173,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
               status: "YENI_LEAD",
               customerType: lead.customerType ?? "MULK_SAHIBI",
               tenantStatus: lead.tenantStatus ?? "BILINMIYOR",
+              tenantNotes: lead.tenantNotes ?? "",
               notes: lead.notes?.trim() || "",
               createdAt: new Date(now + index).toISOString(),
             });
@@ -206,6 +208,11 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       return id;
     },
     updateTask: (id, patch) => {
+      if (patch.status === "TAMAMLANDI") {
+        setData((current) => ({ ...current, tasks: current.tasks.filter((item) => item.id !== id) }));
+        toast.success("Görev tamamlandı ve listeden kaldırıldı");
+        return;
+      }
       setData((current) => ({ ...current, tasks: current.tasks.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
       toast.success("Görev güncellendi");
     },
