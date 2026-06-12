@@ -42,7 +42,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Task and attendeeEmail are required" }, { status: 400 });
   }
 
-  const connection = await usableConnection(body.attendeeEmail);
+  const organizerEmail = session.user.email;
+  const connection = await usableConnection(organizerEmail) ?? await usableConnection(body.attendeeEmail);
   if (!connection) {
     return NextResponse.json({ error: "Google Calendar bağlantısı yok", connected: false }, { status: 409 });
   }
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
     connected: true,
     eventId: event.id,
     htmlLink: event.htmlLink,
+    organizerEmail: connection.userEmail,
     responseStatus: event.attendees?.find((attendee) => attendee.email === body.attendeeEmail)?.responseStatus ?? "needsAction",
   });
 }
