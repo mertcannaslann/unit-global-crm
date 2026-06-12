@@ -1,7 +1,13 @@
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { demoCredentials, initialData } from "@/lib/demo-data";
+import { initialData } from "@/lib/demo-data";
 import type { Role } from "@/lib/types";
+
+const loginCredentials = [
+  { email: process.env.ADMIN_LOGIN_EMAIL ?? "mertcan@unitcrm.com", password: process.env.ADMIN_LOGIN_PASSWORD, role: "ADMIN" },
+  { email: process.env.OWNER_LOGIN_EMAIL ?? "dorukhan@unitglobal.com", password: process.env.OWNER_LOGIN_PASSWORD, role: "OFFICE_MANAGER" },
+  { email: process.env.CONSULTANT_LOGIN_EMAIL ?? "kaan@unitglobal.com", password: process.env.CONSULTANT_LOGIN_PASSWORD, role: "CONSULTANT" },
+] as const;
 
 export const authOptions: AuthOptions = {
   session: {
@@ -20,10 +26,10 @@ export const authOptions: AuthOptions = {
       async authorize(credentials) {
         const email = credentials?.email?.toLowerCase().trim();
         const password = credentials?.password;
-        const credential = demoCredentials.find((item) => item.email === email);
+        const credential = loginCredentials.find((item) => item.email === email);
         const user = initialData.users.find((item) => item.email === email);
 
-        if (!credential || !user || credential.password !== password) {
+        if (!credential?.password || !user || credential.password !== password) {
           return null;
         }
 
