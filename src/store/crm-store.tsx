@@ -2,9 +2,9 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { initialData } from "@/lib/demo-data";
+import { clients as defaultClients, initialData } from "@/lib/demo-data";
 import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
-import type { CrmData, Lead, LeadAction, MarketComparable, Notification, Property, Task, User } from "@/lib/types";
+import type { CrmData, Lead, LeadAction, MarketComparable, Notification, OfficeClient, Property, Task, User } from "@/lib/types";
 
 type NewPropertyOptionalFields = "coverImage" | "gallery" | "videoUrl" | "city" | "projectName" | "floor" | "buildingAge" | "furnished" | "description" | "features";
 type NewPropertyInput = Omit<Property, "id" | "createdAt" | NewPropertyOptionalFields> & Partial<Pick<Property, NewPropertyOptionalFields>>;
@@ -24,6 +24,7 @@ type CrmContextValue = {
   markNotificationRead: (id: string) => void;
   addComparable: (comparable: Omit<MarketComparable, "id" | "lastCheckedAt" | "status">) => void;
   syncSahibindenDemoListings: () => Promise<void>;
+  upsertClient: (client: Omit<OfficeClient, "createdAt"> & { createdAt?: string }) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   addUser: (user: Omit<User, "id" | "avatarColor" | "active">) => void;
   deleteUser: (id: string, reassignedToId: string) => void;
@@ -32,6 +33,18 @@ type CrmContextValue = {
 const CrmContext = createContext<CrmContextValue | null>(null);
 const STORAGE_KEY = "unit-global-crm-data-v7";
 
+function normalizeData(saved: CrmData): CrmData {
+  const defaultUnitGlobal = defaultClients.find((client) => client.id === "client-unit-global");
+  const clients = saved.clients?.length
+    ? saved.clients.map((client) => (client.id === "client-unit-global" && !client.logoUrl ? { ...client, logoUrl: defaultUnitGlobal?.logoUrl } : client))
+    : defaultClients;
+  return {
+    ...saved,
+    clients,
+    users: saved.users.map((user) => (user.role === "ADMIN" || user.clientId ? user : { ...user, clientId: clients[0]?.id })),
+  };
+}
+
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<CrmData>(initialData);
 
@@ -39,7 +52,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        setData(JSON.parse(saved));
+        setData(normalizeData(JSON.parse(saved) as CrmData));
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -207,6 +220,18 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       } else {
         toast.success("Senkronize edilecek yeni ilan yok");
       }
+    },
+    upsertClient: (client) => {
+      setData((current) => {
+        const createdAt = client.createdAt ?? new Date().toISOString();
+        const nextClient = { ...client, createdAt };
+        const exists = current.clients.some((item) => item.id === client.id);
+        return {
+          ...current,
+          clients: exists ? current.clients.map((item) => (item.id === client.id ? { ...item, ...nextClient } : item)) : [nextClient, ...current.clients],
+        };
+      });
+      toast.success("Müşteri ofisi kaydedildi");
     },
     updateUser: (id, patch) => {
       setData((current) => ({ ...current, users: current.users.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
