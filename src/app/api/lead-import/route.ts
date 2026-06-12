@@ -10,6 +10,11 @@ type ZipEntry = {
   localHeaderOffset: number;
 };
 
+type SheetInfo = {
+  name: string;
+  path: string;
+};
+
 function findEndOfCentralDirectory(buffer: Buffer) {
   const minOffset = Math.max(0, buffer.length - 0x10000 - 22);
   for (let index = buffer.length - 22; index >= minOffset; index -= 1) {
@@ -73,6 +78,10 @@ function attr(source: string, name: string) {
   return match?.[1] ?? "";
 }
 
+function normalizeText(value: string) {
+  return value.toLocaleLowerCase("tr").replace(/[ğ]/g, "g").replace(/[ü]/g, "u").replace(/[ş]/g, "s").replace(/[ı]/g, "i").replace(/[ö]/g, "o").replace(/[ç]/g, "c").replace(/[^a-z0-9]/g, "");
+}
+
 function parseSharedStrings(xml: string | null) {
   if (!xml) return [];
   const strings: string[] = [];
@@ -125,17 +134,63 @@ function parseWorksheetRows(xml: string, sharedStrings: string[]) {
   return rows;
 }
 
+function parseWorkbookSheets(workbookXml: string | null, relsXml: string | null) {
+  if (!workbookXml || !relsXml) return [];
+
+  const relTargetById = new Map<string, string>();
+  for (const rel of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+    const id = attr(rel[1], "Id");
+    const target = attr(rel[1], "Target");
+    if (!id || !target) continue;
+    const normalizedTarget = target.startsWith("/") ? target.replace(/^\/+/, "") : `xl/${target.replace(/^\/+/, "")}`;
+    relTargetById.set(id, normalizedTarget);
+  }
+
+  const sheets: SheetInfo[] = [];
+  for (const sheet of workbookXml.matchAll(/<sheet\b([^>]*)\/?>/g)) {
+    const name = decodeXml(attr(sheet[1], "name"));
+    const relationshipId = attr(sheet[1], "r:id");
+    const path = relTargetById.get(relationshipId);
+    if (name && path) sheets.push({ name, path });
+  }
+
+  return sheets;
+}
+
+function headerScore(rows: string[][]) {
+  const strongHeaders = new Set(["id", "address", "adres", "propertyowner", "mulksahibi"]);
+  return rows.slice(0, 40).reduce((bestScore, row) => {
+    const normalized = row.map(normalizeText);
+    const score = normalized.filter((cell) => strongHeaders.has(cell)).length;
+    return Math.max(bestScore, score);
+  }, 0);
+}
+
 function parseXlsx(buffer: Buffer) {
   const entries = readZipEntries(buffer);
   const sharedStrings = parseSharedStrings(readZipFile(buffer, entries, "xl/sharedStrings.xml"));
-  const firstSheetName = entries.find((entry) => /^xl\/worksheets\/sheet\d+\.xml$/.test(entry.name))?.name;
+  const workbookSheets = parseWorkbookSheets(readZipFile(buffer, entries, "xl/workbook.xml"), readZipFile(buffer, entries, "xl/_rels/workbook.xml.rels"));
+  const fallbackSheets = entries
+    .filter((entry) => /^xl\/worksheets\/sheet\d+\.xml$/.test(entry.name))
+    .map((entry, index) => ({ name: `Sayfa ${index + 1}`, path: entry.name }));
+  const sheets = workbookSheets.length ? workbookSheets : fallbackSheets;
 
-  if (!firstSheetName) throw new Error("Excel dosyasında okunacak sayfa bulunamadı.");
+  if (!sheets.length) throw new Error("Excel dosyasında okunacak sayfa bulunamadı.");
 
-  const worksheet = readZipFile(buffer, entries, firstSheetName);
-  if (!worksheet) throw new Error("Excel sayfası okunamadı.");
+  const candidates = sheets
+    .map((sheet) => {
+      const worksheet = readZipFile(buffer, entries, sheet.path);
+      const rows = worksheet ? parseWorksheetRows(worksheet, sharedStrings) : [];
+      const normalizedName = normalizeText(sheet.name);
+      const sheetNameScore = normalizedName.includes("idabonelikbilgileri") ? 1000 : normalizedName.includes("abonelik") ? 500 : 0;
+      return { ...sheet, rows, score: sheetNameScore + headerScore(rows) * 50 + Math.min(rows.length, 1000) / 1000 };
+    })
+    .filter((sheet) => sheet.rows.length);
 
-  return parseWorksheetRows(worksheet, sharedStrings);
+  const selected = candidates.sort((a, b) => b.score - a.score)[0];
+  if (!selected) throw new Error("Excel sayfası okunamadı.");
+
+  return selected.rows;
 }
 
 export async function POST(request: Request) {
