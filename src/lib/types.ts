@@ -79,7 +79,12 @@ export type Lead = {
   interest: string;
   address?: string;
   propertyOwner?: string;
+  propertyOwnerPhone?: string;
   customerType?: LeadCustomerType;
+  tenantStatus?: "VAR" | "YOK" | "BILINMIYOR";
+  tenantName?: string;
+  tenantMoveIn?: string;
+  tenantMoveOut?: string;
   preferredLocation?: string;
   propertyType?: string;
   interestedPropertyIds?: string[];
