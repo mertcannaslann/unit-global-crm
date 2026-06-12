@@ -29,6 +29,7 @@ type CrmContextValue = {
   updateUser: (id: string, patch: Partial<User>) => void;
   addUser: (user: Omit<User, "id" | "avatarColor" | "active">) => void;
   deleteUser: (id: string, reassignedToId: string) => void;
+  resetClientData: (clientId: string) => void;
 };
 
 const CrmContext = createContext<CrmContextValue | null>(null);
@@ -352,6 +353,35 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         };
       });
       toast.success("Danışman silindi; bağlı kayıtlar ofis sahibine devredildi");
+    },
+    resetClientData: (clientId) => {
+      setData((current) => {
+        const client = current.clients.find((item) => item.id === clientId);
+        if (!client) {
+          toast.error("Müşteri ofisi bulunamadı.");
+          return current;
+        }
+
+        const clientUserIds = new Set(current.users.filter((item) => item.clientId === clientId).map((item) => item.id));
+        const propertyIds = new Set(current.properties.filter((item) => clientUserIds.has(item.consultantId)).map((item) => item.id));
+        const leadIds = new Set(current.leads.filter((item) => clientUserIds.has(item.consultantId) || (item.importedById ? clientUserIds.has(item.importedById) : false)).map((item) => item.id));
+
+        return {
+          ...current,
+          properties: current.properties.filter((item) => !propertyIds.has(item.id)),
+          leads: current.leads.filter((item) => !leadIds.has(item.id)),
+          leadActions: current.leadActions.filter((item) => !leadIds.has(item.leadId) && !clientUserIds.has(item.userId)),
+          tasks: current.tasks.filter((item) => !clientUserIds.has(item.assignedToId) && !clientUserIds.has(item.createdById) && !(item.leadId && leadIds.has(item.leadId)) && !(item.propertyId && propertyIds.has(item.propertyId))),
+          documents: current.documents.filter((item) => !clientUserIds.has(item.assignedToId) && !((item.relatedType === "PROPERTY" && propertyIds.has(item.relatedId)) || (item.relatedType === "LEAD" && leadIds.has(item.relatedId)))),
+          notifications: current.notifications.filter((item) => !item.targetUserId || !clientUserIds.has(item.targetUserId)),
+          comparables: current.comparables.filter((item) => !propertyIds.has(item.propertyId)),
+          reports: current.reports.filter((item) => !propertyIds.has(item.propertyId)),
+          priceHistory: current.priceHistory.filter((item) => !propertyIds.has(item.propertyId)),
+          activityLogs: current.activityLogs.filter((item) => !clientUserIds.has(item.userId)),
+          setting: clientId === "client-unit-global" ? { ...current.setting, lastSahibindenSyncAt: undefined } : current.setting,
+        };
+      });
+      toast.success("Müşteri ofisinin test datası temizlendi; kullanıcılar korundu");
     },
   }), [data]);
 
