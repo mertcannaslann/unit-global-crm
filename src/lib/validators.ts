@@ -34,6 +34,7 @@ export const leadSchema = z.object({
   tenantName: z.string().optional(),
   tenantMoveIn: z.string().optional(),
   tenantMoveOut: z.string().optional(),
+  tenantNotes: z.string().optional(),
   notes: z.string().optional(),
   consultantId: z.string().min(1, "Danışman seçilmeli"),
 });
