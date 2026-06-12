@@ -27,6 +27,7 @@ export type OfficeClient = {
   id: string;
   name: string;
   ownerName: string;
+  inviteFromEmail?: string;
   userLimit: number;
   status: "Hazır" | "Kurulumda" | "Pasif";
   logoUrl?: string;
@@ -90,6 +91,9 @@ export type Lead = {
   propertyType?: string;
   interestedPropertyIds?: string[];
   appointmentAt?: string;
+  importedById?: string;
+  importSource?: string;
+  importedAt?: string;
   status: LeadStatus;
   consultantId: string;
   notes: string;
@@ -119,6 +123,8 @@ export type Task = {
   googleCalendarEventId?: string;
   googleCalendarHtmlLink?: string;
   googleCalendarResponseStatus?: string;
+  calendarInviteUrl?: string;
+  calendarInviteStatus?: string;
   assignedToId: string;
   createdById: string;
   leadId?: string;
