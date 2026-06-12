@@ -8,14 +8,15 @@ import type { CrmData, Lead, LeadAction, MarketComparable, Notification, OfficeC
 
 type NewPropertyOptionalFields = "coverImage" | "gallery" | "videoUrl" | "city" | "projectName" | "floor" | "buildingAge" | "furnished" | "description" | "features";
 type NewPropertyInput = Omit<Property, "id" | "createdAt" | NewPropertyOptionalFields> & Partial<Pick<Property, NewPropertyOptionalFields>>;
+type NewLeadInput = Omit<Lead, "id" | "createdAt" | "status" | "notes"> & { notes?: string };
 
 type CrmContextValue = {
   data: CrmData;
   addProperty: (property: NewPropertyInput) => string;
   updateProperty: (id: string, patch: Partial<Property>) => void;
   deleteProperty: (id: string) => void;
-  addLead: (lead: Omit<Lead, "id" | "createdAt" | "status" | "notes">) => void;
-  importLeads: (leads: Array<Omit<Lead, "id" | "createdAt" | "status" | "notes">>, sourceName?: string) => void;
+  addLead: (lead: NewLeadInput) => void;
+  importLeads: (leads: NewLeadInput[], sourceName?: string) => void;
   addLeadAction: (leadId: string, userId: string, note: string) => void;
   updateLead: (id: string, patch: Partial<Lead>) => void;
   addTask: (task: Omit<Task, "id" | "status">) => string;
@@ -42,6 +43,7 @@ function normalizeData(saved: CrmData): CrmData {
     ...saved,
     clients,
     users: saved.users.map((user) => (user.role === "ADMIN" || user.clientId ? user : { ...user, clientId: clients[0]?.id })),
+    leads: saved.leads.map((lead) => ({ ...lead, customerType: lead.customerType ?? "KIRACI" })),
   };
 }
 
@@ -124,7 +126,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
             ...lead,
             id: `lead-${Date.now()}`,
             status: "YENI_LEAD",
-            notes: "Yeni lead. İlk temas bekleniyor.",
+            customerType: lead.customerType ?? "KIRACI",
+            notes: lead.notes?.trim() || "Yeni lead. İlk temas bekleniyor.",
             createdAt: new Date().toISOString(),
           },
           ...current.leads,
@@ -134,7 +137,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     },
     importLeads: (leads, sourceName) => {
       const now = Date.now();
-      const cleanLeads = leads.filter((lead) => lead.name.trim() && lead.phone.trim());
+      const cleanLeads = leads.filter((lead) => lead.name.trim());
       if (!cleanLeads.length) {
         toast.error("İçe aktarılacak müşteri bulunamadı");
         return;
@@ -146,7 +149,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
             ...lead,
             id: `lead-import-${now}-${index}`,
             status: "YENI_LEAD" as const,
-            notes: "Excel / CSV aktarımı ile eklendi. İlk temas bekleniyor.",
+            customerType: lead.customerType ?? "KIRACI",
+            notes: lead.notes?.trim() || "Excel / CSV aktarımı ile eklendi. İlk temas bekleniyor.",
             createdAt: new Date(now + index).toISOString(),
           })),
           ...current.leads,
