@@ -48,7 +48,7 @@ import { initials } from "@/lib/utils";
 import { leadSchema, propertySchema } from "@/lib/validators";
 import { useCrm } from "@/store/crm-store";
 import type { ListingPreview } from "@/services/listing-providers/listing-preview";
-import type { CrmData, Lead, MarketListing, OfficeClient, Property, User } from "@/lib/types";
+import type { CrmData, Lead, MarketListing, Notification, OfficeClient, Property, User } from "@/lib/types";
 
 type CrmAppProps = {
   slug: string[];
@@ -198,6 +198,67 @@ function formatTurkishMonth(date: Date) {
 function sameCalendarDay(value: string, target: Date) {
   const date = new Date(value);
   return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth() && date.getDate() === target.getDate();
+}
+
+function dateOnly(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function startOfLocalDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function daysUntilDate(value: string | undefined, today = new Date()) {
+  if (!value) return null;
+  const date = dateOnly(value);
+  if (!date) return null;
+  return Math.round((date.getTime() - startOfLocalDay(today).getTime()) / 86400000);
+}
+
+function tenantReminderText(daysLeft: number) {
+  if (daysLeft === 0) return "bugün çıkış / sözleşme bitiş günü";
+  return `${daysLeft} gün kaldı`;
+}
+
+function tenantReminderNotifications(leads: Lead[], today = new Date()): Notification[] {
+  const reminderDays = new Set([7, 5, 3, 0]);
+  return leads
+    .filter((lead) => lead.tenantStatus === "VAR" && lead.tenantMoveOut)
+    .map((lead) => ({ lead, daysLeft: daysUntilDate(lead.tenantMoveOut, today) }))
+    .filter((item): item is { lead: Lead; daysLeft: number } => item.daysLeft !== null && reminderDays.has(item.daysLeft))
+    .map(({ lead, daysLeft }) => ({
+      id: `tenant-reminder-${lead.id}-${lead.tenantMoveOut}-${daysLeft}`,
+      title: "Kira sözleşmesi hatırlatması",
+      message: `${lead.propertyOwner || lead.name} için ${tenantReminderText(daysLeft)}. ${lead.tenantName ? `Kiracı: ${lead.tenantName}. ` : ""}${lead.address || ""}`,
+      targetUserId: lead.consultantId,
+      status: "OKUNMADI",
+      createdAt: new Date().toISOString(),
+    }));
+}
+
+type ReportRange = "GUNLUK" | "HAFTALIK" | "AYLIK";
+
+function inReportRange(value: string | undefined, range: ReportRange, today = new Date()) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const startToday = startOfLocalDay(today);
+  const startDate = startOfLocalDay(date);
+  if (range === "GUNLUK") return startDate.getTime() === startToday.getTime();
+  if (range === "HAFTALIK") {
+    const startOfWeek = new Date(startToday);
+    startOfWeek.setDate(startToday.getDate() - ((startToday.getDay() + 6) % 7));
+    return startDate >= startOfWeek && startDate <= startToday;
+  }
+  return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
+}
+
+function reportRangeLabel(range: ReportRange) {
+  if (range === "GUNLUK") return "Bugün";
+  if (range === "HAFTALIK") return "Bu hafta";
+  return "Bu ay";
 }
 
 export function CrmApp({ slug }: CrmAppProps) {
@@ -382,8 +443,12 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   };
 
   const title = titleMap[slug[0]] ?? "Dashboard";
-  const visibleNotifications = data.notifications
-    .filter((item) => !item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id)
+  const scopedTenantLeads = data.leads.filter((lead) => canSeeOffice(user) || lead.consultantId === user.id);
+  const tenantNotifications = tenantReminderNotifications(scopedTenantLeads);
+  const visibleNotifications = [
+    ...tenantNotifications,
+    ...data.notifications.filter((item) => !item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id),
+  ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const unreadCount = visibleNotifications.filter((item) => item.status === "OKUNMADI").length;
 
@@ -426,7 +491,9 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
                   <button
                     key={notification.id}
                     className="w-full border-b border-border px-4 py-3 text-left transition hover:bg-[#f7fbff]"
-                    onClick={() => markNotificationRead(notification.id)}
+                    onClick={() => {
+                      if (!notification.id.startsWith("tenant-reminder-")) markNotificationRead(notification.id);
+                    }}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm font-semibold text-slate-950">{notification.title}</p>
@@ -715,8 +782,19 @@ function Dashboard({ user }: { user: User }) {
   const scopedTasks = canSeeOffice(user) ? data.tasks : data.tasks.filter((item) => item.assignedToId === user.id);
   const todayTasks = scopedTasks.filter((item) => item.status !== "TAMAMLANDI" && sameCalendarDay(item.dueDate, today));
   const appointments = scopedTasks.filter((item) => item.type === "RANDEVU" || item.type === "YER_GOSTERIMI");
+  const activeTenants = scopedLeads.filter((lead) => lead.tenantStatus === "VAR");
+  const tenantReminders = tenantReminderNotifications(scopedLeads, today);
   const activeSale = scopedProperties.filter((item) => item.status === "AKTIF" && item.listingType === "SATILIK").length;
   const activeRent = scopedProperties.filter((item) => item.status === "AKTIF" && item.listingType === "KIRALIK").length;
+  const reportRanges = (["GUNLUK", "HAFTALIK", "AYLIK"] as const).map((range) => ({
+    range,
+    label: reportRangeLabel(range),
+    leads: scopedLeads.filter((item) => inReportRange(item.createdAt, range, today)).length,
+    properties: scopedProperties.filter((item) => inReportRange(item.createdAt, range, today)).length,
+    sale: scopedProperties.filter((item) => item.listingType === "SATILIK" && inReportRange(item.createdAt, range, today)).length,
+    rent: scopedProperties.filter((item) => item.listingType === "KIRALIK" && inReportRange(item.createdAt, range, today)).length,
+    tasks: scopedTasks.filter((item) => inReportRange(item.dueDate, range, today)).length,
+  }));
   const monthly = ["Oca", "Şub", "Mar", "Nis", "May", "Haz"].map((month, index) => ({
     month,
     portfoy: scopedProperties.length ? 1 + index : 0,
@@ -725,22 +803,99 @@ function Dashboard({ user }: { user: User }) {
   }));
   const statusData = statusOptions.map((status) => ({ name: status, value: scopedProperties.filter((item) => item.status === status).length }));
   const pipelineData = leadStages.map((stage) => ({ name: humanize(stage), value: scopedLeads.filter((lead) => lead.status === stage).length }));
-  const consultantData = data.users.filter((item) => item.role === "CONSULTANT").map((consultant) => ({
+  const performanceUsers = canSeeOffice(user) ? data.users.filter((item) => item.role === "CONSULTANT") : [user];
+  const consultantData = performanceUsers.map((consultant) => ({
     name: consultant.name.split(" ")[0],
     portfoy: data.properties.filter((item) => item.consultantId === consultant.id).length,
     gorev: data.tasks.filter((item) => item.assignedToId === consultant.id && item.status !== "TAMAMLANDI").length,
     kapanan: data.leads.filter((item) => item.consultantId === consultant.id && item.status === "KAPANDI").length,
   }));
+  const consultantReportRows = data.users.filter((item) => item.role === "CONSULTANT").map((consultant) => {
+    const consultantLeads = data.leads.filter((item) => item.consultantId === consultant.id);
+    const consultantProperties = data.properties.filter((item) => item.consultantId === consultant.id);
+    const consultantTasks = data.tasks.filter((item) => item.assignedToId === consultant.id);
+    const countFor = (range: ReportRange) =>
+      consultantLeads.filter((item) => inReportRange(item.createdAt, range, today)).length
+      + consultantProperties.filter((item) => inReportRange(item.createdAt, range, today)).length
+      + consultantTasks.filter((item) => inReportRange(item.dueDate, range, today)).length;
+    return {
+      id: consultant.id,
+      name: consultant.name,
+      today: countFor("GUNLUK"),
+      week: countFor("HAFTALIK"),
+      month: countFor("AYLIK"),
+    };
+  });
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <Metric label="Aktif portföy" value={scopedProperties.filter((item) => item.status === "AKTIF").length.toString()} detail={`${activeSale} satılık · ${activeRent} kiralık`} />
+        <Metric label="Aktif kiracı" value={activeTenants.length.toString()} detail="Kiracı var işaretli kayıt" />
         <Metric label="Yeni lead" value={scopedLeads.filter((item) => item.status === "YENI_LEAD").length.toString()} detail="İlk temas bekliyor" />
         <Metric label="Bugünkü görev" value={todayTasks.length.toString()} detail="Açık operasyon" />
         <Metric label="Yaklaşan randevu" value={appointments.length.toString()} detail="Randevu / yer gösterimi" />
-        <Metric label="Bekleyen evrak" value={data.documents.filter((item) => item.status !== "TAMAM").length.toString()} detail="Doküman takibi" />
+        <Metric label="Kira hatırlatma" value={tenantReminders.length.toString()} detail="7/5/3 gün ve çıkış günü" />
       </div>
+
+      {canSeeOffice(user) ? (
+        <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+          <Card className="p-5">
+            <SectionTitle title="Satış / Kiralama Raporu" action="Bugün · Bu hafta · Bu ay" />
+            <div className="grid gap-3 md:grid-cols-3">
+              {reportRanges.map((report) => (
+                <div key={report.range} className="rounded-md border border-border bg-white p-4">
+                  <p className="text-sm font-semibold text-slate-950">{report.label}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <InfoRow label="Satış" value={report.sale.toString()} />
+                    <InfoRow label="Kiralama" value={report.rent.toString()} />
+                    <InfoRow label="Müşteri" value={report.leads.toString()} />
+                    <InfoRow label="Görev" value={report.tasks.toString()} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card className="overflow-hidden">
+            <SectionTitle title="Danışman Bazlı Rapor" action="Sadece owner görünümü" padded />
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] border-collapse text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">Danışman</th>
+                    <th className="px-5 py-3 font-semibold">Bugün</th>
+                    <th className="px-5 py-3 font-semibold">Bu hafta</th>
+                    <th className="px-5 py-3 font-semibold">Bu ay</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {consultantReportRows.map((row) => (
+                    <tr key={row.id} className="bg-white">
+                      <td className="px-5 py-4 font-medium">{row.name}</td>
+                      <td className="px-5 py-4">{row.today}</td>
+                      <td className="px-5 py-4">{row.week}</td>
+                      <td className="px-5 py-4">{row.month}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      <Card className="p-5">
+        <SectionTitle title="Kira Sözleşmesi Hatırlatmaları" action={`${tenantReminders.length} bildirim`} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {tenantReminders.slice(0, 8).map((notification) => (
+            <div key={notification.id} className="rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm">
+              <p className="font-semibold text-slate-950">{notification.title}</p>
+              <p className="mt-1 leading-5 text-muted-foreground">{notification.message}</p>
+            </div>
+          ))}
+          {!tenantReminders.length ? <p className="text-sm text-muted-foreground">7, 5, 3 gün kalan veya bugün çıkışı olan kiracı kaydı yok.</p> : null}
+        </div>
+      </Card>
 
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
         <Card className="p-5">
@@ -1788,7 +1943,7 @@ function exportLeadsToExcel(leads: Lead[], users: User[]) {
     return;
   }
 
-  const headers = ["ID", "Mülk Sahibi", "Telefon", "Adres", "Semt", "Kiracı Bilgisi", "Kiracı Adı", "Giriş Tarihi", "Çıkış Tarihi", "Danışman", "Durum", "Notlar"];
+  const headers = ["ID", "Mülk Sahibi", "Telefon", "Adres", "Semt", "Kiracı Bilgisi", "Kiracı Adı", "Giriş Tarihi", "Çıkış Tarihi", "Kiracı Notu", "Danışman", "Durum", "Notlar"];
   const rows = leads.map((lead) => [
     lead.externalId || lead.id,
     lead.propertyOwner || lead.name || "",
@@ -1799,6 +1954,7 @@ function exportLeadsToExcel(leads: Lead[], users: User[]) {
     lead.tenantName || "",
     lead.tenantMoveIn || "",
     lead.tenantMoveOut || "",
+    lead.tenantNotes || "",
     users.find((item) => item.id === lead.consultantId)?.name ?? "",
     humanize(lead.status),
     lead.notes || "",
@@ -1846,12 +2002,13 @@ function LeadsPage({ user }: { user: User }) {
     propertyOwner: "",
     propertyOwnerPhone: "",
     customerType: "KIRACI" as const,
-    tenantStatus: "BILINMIYOR",
-    tenantName: "",
-    tenantMoveIn: "",
-    tenantMoveOut: "",
-    notes: "",
-    consultantId: canManageOffice(user) ? firstConsultantId : user.id,
+            tenantStatus: "BILINMIYOR",
+            tenantName: "",
+            tenantMoveIn: "",
+            tenantMoveOut: "",
+            tenantNotes: "",
+            notes: "",
+            consultantId: canManageOffice(user) ? firstConsultantId : user.id,
   };
   const form = useForm<LeadFormValues>({ resolver: zodResolver(leadSchema), defaultValues: defaultLeadValues });
   const watchedAddress = form.watch("address");
@@ -2010,7 +2167,7 @@ function LeadsPage({ user }: { user: User }) {
               {leads.map((lead) => (
                 <tr key={lead.id} className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]" onClick={() => setSelectedLead(lead)}>
                   <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.externalId || lead.id}</td>
-                  <td className="max-w-[240px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950"><Link href={`/musteriler/${lead.id}`}>{lead.propertyOwner || lead.name || "-"}</Link></td>
+                  <td className="max-w-[240px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950">{lead.propertyOwner || lead.name || "-"}</td>
                   <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.propertyOwnerPhone || lead.phone || "-"}</td>
                   <td className="max-w-[420px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-slate-800">{lead.address || "-"}</td>
                   <td className="border border-slate-200 px-3 py-2 text-slate-800">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
@@ -2031,29 +2188,159 @@ function LeadsPage({ user }: { user: User }) {
       </Card>
 
       {selectedLead ? (
-        <Card className="p-5">
-          <SectionTitle title={selectedLead.name} action={<Badge label={selectedLead.status} />} />
-          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-            <InfoRow label="ID" value={selectedLead.externalId || selectedLead.id} />
-            <InfoRow label="Mülk Sahibi" value={selectedLead.propertyOwner || "-"} />
-            <InfoRow label="Telefon" value={selectedLead.propertyOwnerPhone || selectedLead.phone || "-"} />
-            <InfoRow label="Adres" value={selectedLead.address || "-"} />
-            <InfoRow label="Semt" value={selectedLead.preferredLocation || extractDistrictFromAddress(selectedLead.address) || "-"} />
-            <InfoRow label="Kiracı Bilgisi" value={tenantSummary(selectedLead)} />
+        <LeadPopup
+          lead={selectedLead}
+          consultantName={data.users.find((item) => item.id === selectedLead.consultantId)?.name ?? "-"}
+          note={note}
+          onNoteChange={setNote}
+          onAddNote={() => {
+            const cleanNote = note.trim();
+            if (!cleanNote) {
+              toast.error("Not boş olamaz");
+              return;
+            }
+            const nextNotes = [selectedLead.notes, cleanNote].filter(Boolean).join("\n");
+            addLeadAction(selectedLead.id, user.id, cleanNote);
+            updateLead(selectedLead.id, { notes: nextNotes });
+            setSelectedLead((current) => (current ? { ...current, notes: nextNotes } : current));
+            setNote("");
+          }}
+          onClose={() => { setSelectedLead(null); setNote(""); }}
+          onUpdate={(patch) => {
+            updateLead(selectedLead.id, patch);
+            setSelectedLead((current) => (current ? { ...current, ...patch } : current));
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function LeadPopup({
+  lead,
+  consultantName,
+  note,
+  onNoteChange,
+  onAddNote,
+  onClose,
+  onUpdate,
+}: {
+  lead: Lead;
+  consultantName: string;
+  note: string;
+  onNoteChange: (value: string) => void;
+  onAddNote: () => void;
+  onClose: () => void;
+  onUpdate: (patch: Partial<Lead>) => void;
+}) {
+  const [tenantStatus, setTenantStatus] = useState<NonNullable<Lead["tenantStatus"]>>(lead.tenantStatus ?? "BILINMIYOR");
+  const [tenantName, setTenantName] = useState(lead.tenantName ?? "");
+  const [tenantMoveIn, setTenantMoveIn] = useState(lead.tenantMoveIn ?? "");
+  const [tenantMoveOut, setTenantMoveOut] = useState(lead.tenantMoveOut ?? "");
+  const [tenantNotes, setTenantNotes] = useState(lead.tenantNotes ?? "");
+  const [status, setStatus] = useState<Lead["status"]>(lead.status);
+
+  useEffect(() => {
+    setTenantStatus(lead.tenantStatus ?? "BILINMIYOR");
+    setTenantName(lead.tenantName ?? "");
+    setTenantMoveIn(lead.tenantMoveIn ?? "");
+    setTenantMoveOut(lead.tenantMoveOut ?? "");
+    setTenantNotes(lead.tenantNotes ?? "");
+    setStatus(lead.status);
+  }, [lead]);
+
+  const daysLeft = daysUntilDate(tenantMoveOut);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <Card className="max-h-[92vh] w-full max-w-5xl overflow-hidden shadow-2xl shadow-blue-950/20">
+        <div className="flex items-start justify-between gap-4 border-b border-border bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Mülk / Kiracı Kartı</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">{lead.propertyOwner || lead.name}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">ID {lead.externalId || lead.id} · {consultantName}</p>
           </div>
-          <p className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm text-muted-foreground">{selectedLead.notes}</p>
-          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-            <Textarea className="min-h-10" placeholder="Lead aksiyonu / not ekle" value={note} onChange={(event) => setNote(event.target.value)} />
-            <Button onClick={() => { addLeadAction(selectedLead.id, user.id, note || "Danışman notu eklendi."); setNote(""); }}>Not Ekle</Button>
-            <Button variant="outline" onClick={() => updateLead(selectedLead.id, { status: "TEKLIF_VERILDI" })}>Teklife Al</Button>
+          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Kapat">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <div className="max-h-[calc(92vh-76px)] overflow-y-auto p-5">
+          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
+            <InfoRow label="Mülk sahibi" value={lead.propertyOwner || "-"} />
+            <InfoRow label="Telefon" value={lead.propertyOwnerPhone || lead.phone || "-"} />
+            <InfoRow label="Adres" value={lead.address || "-"} />
+            <InfoRow label="Semt" value={lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"} />
+            <InfoRow label="Kiracı durumu" value={tenantSummary({ ...lead, tenantStatus, tenantName })} />
           </div>
-        </Card>
-      ) : (
-        <Card className="border-blue-100 bg-[#f7fbff] p-5">
-          <SectionTitle title="Seçili Müşteri" />
-          <p className="text-sm leading-6 text-muted-foreground">Tablodan bir müşteriye tıklayınca arama notu, teklif durumu ve danışman aksiyonları burada açılır.</p>
-        </Card>
-      )}
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+            <Card className="border-blue-100 bg-[#f7fbff] p-4">
+              <SectionTitle title="Kiracı / Kira Bilgisi" action={daysLeft !== null ? tenantReminderText(daysLeft) : "Tarih yok"} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Kiracı durumu">
+                  <Select value={tenantStatus} onChange={(event) => setTenantStatus(event.target.value as NonNullable<Lead["tenantStatus"]>)}>
+                    <option value="BILINMIYOR">Belirtilmedi</option>
+                    <option value="VAR">Kiracı var</option>
+                    <option value="YOK">Kiracı yok</option>
+                  </Select>
+                </Field>
+                <Field label="Kayıt durumu">
+                  <Select value={status} onChange={(event) => setStatus(event.target.value as Lead["status"])}>
+                    {leadStages.map((stage) => <option key={stage} value={stage}>{humanize(stage)}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Kiracı isim soyisim">
+                  <Input value={tenantName} onChange={(event) => setTenantName(event.target.value)} placeholder="Kiracı adı soyadı" disabled={tenantStatus === "YOK"} />
+                </Field>
+                <Field label="Giriş tarihi">
+                  <Input type="date" value={tenantMoveIn} onChange={(event) => setTenantMoveIn(event.target.value)} disabled={tenantStatus === "YOK"} />
+                </Field>
+                <Field label="Çıkış / sözleşme bitiş tarihi">
+                  <Input type="date" value={tenantMoveOut} onChange={(event) => setTenantMoveOut(event.target.value)} disabled={tenantStatus === "YOK"} />
+                </Field>
+                <div className="rounded-md border border-blue-100 bg-white p-3 text-sm">
+                  <p className="font-semibold text-slate-950">Hatırlatma</p>
+                  <p className="mt-1 leading-5 text-muted-foreground">Tarih girilirse 7, 5, 3 gün kala ve çıkış günü bildirim oluşur.</p>
+                </div>
+                <Field label="Kiracı / kira notları">
+                  <Textarea className="min-h-28 md:col-span-2" value={tenantNotes} onChange={(event) => setTenantNotes(event.target.value)} placeholder="Kira durumu, özel şartlar, çıkış notu..." disabled={tenantStatus === "YOK"} />
+                </Field>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button
+                  onClick={() => onUpdate({
+                    status,
+                    tenantStatus,
+                    tenantName: tenantStatus === "YOK" ? "" : tenantName,
+                    tenantMoveIn: tenantStatus === "YOK" ? "" : tenantMoveIn,
+                    tenantMoveOut: tenantStatus === "YOK" ? "" : tenantMoveOut,
+                    tenantNotes: tenantStatus === "YOK" ? "" : tenantNotes,
+                  })}
+                >
+                  Kiracı Bilgisini Kaydet
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <SectionTitle title="Notlar" action="Danışman notu" />
+              <div className="rounded-md border border-border bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">
+                {lead.notes || "Genel not yok."}
+              </div>
+              {lead.tenantNotes ? (
+                <div className="mt-3 rounded-md border border-blue-100 bg-[#f7fbff] p-3 text-sm leading-6 text-muted-foreground">
+                  <span className="font-semibold text-slate-950">Kiracı notu: </span>{lead.tenantNotes}
+                </div>
+              ) : null}
+              <Textarea className="mt-3 min-h-28" placeholder="Yeni not ekle" value={note} onChange={(event) => onNoteChange(event.target.value)} />
+              <div className="mt-3 flex justify-end">
+                <Button variant="outline" onClick={onAddNote}>Not Ekle</Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
