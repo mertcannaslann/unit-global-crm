@@ -27,7 +27,7 @@ async function getFreshConnection(userEmail: string) {
   });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email;
 
@@ -40,12 +40,21 @@ export async function POST() {
     return NextResponse.json({ connected: false, updates: [] }, { status: 409 });
   }
 
+  let attendeesByTaskId: Record<string, string> = {};
+  try {
+    const body = await request.json() as { attendeesByTaskId?: Record<string, string> };
+    attendeesByTaskId = body.attendeesByTaskId ?? {};
+  } catch {
+    attendeesByTaskId = {};
+  }
+
   const result = await listCalendarChanges(connection);
   const updates = (result.items ?? [])
     .map((event) => {
       const crmTaskId = event.extendedProperties?.shared?.crmTaskId;
       if (!crmTaskId) return null;
-      const attendee = event.attendees?.find((item) => item.email === userEmail);
+      const attendeeEmail = attendeesByTaskId[crmTaskId]?.toLowerCase() ?? userEmail.toLowerCase();
+      const attendee = event.attendees?.find((item) => item.email?.toLowerCase() === attendeeEmail) ?? event.attendees?.find((item) => item.email?.toLowerCase() === userEmail.toLowerCase());
       return {
         taskId: crmTaskId,
         eventId: event.id,
