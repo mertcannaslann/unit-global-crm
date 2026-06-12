@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 export default function LoginPage() {
   const router = useRouter();
   const { status } = useSession();
-  const [email, setEmail] = useState("mertcan@unitcrm.com");
-  const [password, setPassword] = useState("Mertcan123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -53,13 +53,8 @@ export default function LoginPage() {
           <p className="mb-3 text-sm font-medium uppercase tracking-[0.18em] text-blue-100">Emlak Ofisi CRM</p>
           <h1 className="max-w-md text-4xl font-semibold leading-tight md:text-5xl">Real Estate Operating System</h1>
           <p className="mt-5 max-w-md text-sm leading-6 text-blue-100">
-            Farklı emlak ofislerine hesap aç, kullanıcı limitini belirle, owner ve danışman girişlerini üret, operasyonu tek panelden yönet.
+            Farklı emlak ofislerine hesap aç, kullanıcı limitini belirle, owner ve danışman operasyonlarını tek panelden güvenli şekilde yönet.
           </p>
-          <div className="mt-12 grid gap-3 text-sm text-blue-50">
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">Platform Admin: mertcan@unitcrm.com / Mertcan123!</div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">Unit Global Owner: dorukhan@unitglobal.com / Owner123!</div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">Danışman: kaan@unitglobal.com / Consultant123!</div>
-          </div>
         </section>
 
         <section className="p-8 md:p-12">
