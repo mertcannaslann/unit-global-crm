@@ -16,9 +16,8 @@ export type EmailCalendarInvitePayload = {
 
 type SendCalendarInviteResult = {
   sent: boolean;
-  mode: "email" | "mailto";
+  mode: "email";
   calendarUrl: string;
-  mailtoUrl: string;
   error?: string;
 };
 
@@ -131,12 +130,11 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
 
 export async function sendCalendarInviteEmail(payload: EmailCalendarInvitePayload): Promise<SendCalendarInviteResult> {
   const { subject, text, html, calendarUrl } = buildCalendarInviteEmail(payload);
-  const mailtoUrl = `mailto:${encode(payload.attendeeEmail)}?subject=${encode(subject)}&body=${encode(text)}`;
   const resendApiKey = process.env.RESEND_API_KEY;
   const verifiedFromEmail = process.env.CALENDAR_INVITE_FROM;
 
   if (!resendApiKey || !verifiedFromEmail) {
-    return { sent: false, mode: "mailto", calendarUrl, mailtoUrl };
+    return { sent: false, mode: "email", calendarUrl, error: "Mail servisi bağlı değil." };
   }
 
   try {
@@ -163,11 +161,11 @@ export async function sendCalendarInviteEmail(payload: EmailCalendarInvitePayloa
     });
 
     if (!response.ok) {
-      return { sent: false, mode: "mailto", calendarUrl, mailtoUrl, error: "Mail servisi daveti gönderemedi." };
+      return { sent: false, mode: "email", calendarUrl, error: "Mail servisi daveti gönderemedi." };
     }
 
-    return { sent: true, mode: "email", calendarUrl, mailtoUrl };
+    return { sent: true, mode: "email", calendarUrl };
   } catch {
-    return { sent: false, mode: "mailto", calendarUrl, mailtoUrl, error: "Mail servisine ulaşılamadı." };
+    return { sent: false, mode: "email", calendarUrl, error: "Mail servisine ulaşılamadı." };
   }
 }
