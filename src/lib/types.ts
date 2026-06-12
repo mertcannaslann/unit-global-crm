@@ -4,6 +4,7 @@ export type PropertyType = "SATILIK" | "KIRALIK";
 export type PropertySourceType = "OWN_LISTING" | "AUTHORIZED_PORTFOLIO" | "MANUAL";
 export type PropertySyncStatus = "SYNCED" | "MANUAL" | "PENDING" | "ERROR";
 export type LeadStatus = "YENI_LEAD" | "ARANDI" | "RANDEVU_ALINDI" | "YER_GOSTERILDI" | "TEKLIF_VERILDI" | "KAPANDI" | "KAYBEDILDI";
+export type LeadCustomerType = "MULK_SAHIBI" | "KIRACI";
 export type TaskStatus = "ACIK" | "DEVAM" | "TAMAMLANDI";
 export type TaskType = "ARAMA" | "RANDEVU" | "YER_GOSTERIMI" | "EVRAK_TAKIBI" | "FOTOGRAF_CEKIMI" | "FIYAT_GUNCELLEME" | "MUSTERI_TAKIBI";
 export type NotificationStatus = "OKUNMADI" | "OKUNDU";
@@ -69,11 +70,15 @@ export type Property = {
 export type Lead = {
   id: string;
   name: string;
+  externalId?: string;
   email: string;
   phone: string;
   source: string;
   budget: number;
   interest: string;
+  address?: string;
+  propertyOwner?: string;
+  customerType?: LeadCustomerType;
   preferredLocation?: string;
   propertyType?: string;
   interestedPropertyIds?: string[];
