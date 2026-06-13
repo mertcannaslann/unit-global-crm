@@ -3097,6 +3097,9 @@ function TasksPage({ user }: { user: User }) {
                         {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
                         {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       </div>
+                      {task.calendarInviteRespondedAt ? (
+                        <p className="mt-2 text-xs font-medium text-slate-500">Yanıt zamanı: {shortDate(task.calendarInviteRespondedAt)}</p>
+                      ) : null}
                       <div className="mt-4 flex flex-wrap gap-2">
                         {column !== "ACIK" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "ACIK" })}>Açık</Button> : null}
                         {column !== "DEVAM" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "DEVAM" })}>Devam</Button> : null}
@@ -3279,6 +3282,9 @@ function CalendarPage({ user }: { user: User }) {
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
                     </div>
+                    {task.calendarInviteRespondedAt ? (
+                      <p className="mt-2 text-xs font-medium text-slate-500">Yanıt zamanı: {shortDate(task.calendarInviteRespondedAt)}</p>
+                    ) : null}
                   </div>
                 </div>
               </div>
