@@ -18,8 +18,10 @@ async function bootstrapUserFromEnv(email: string, password: string) {
     return null;
   }
 
-  const credential = loginCredentials.find((item) => item.email === email);
   const user = initialData.users.find((item) => item.email === email);
+  const credential =
+    loginCredentials.find((item) => item.email === email) ??
+    (user ? loginCredentials.find((item) => item.role === user.role) : undefined);
   if (!credential?.password || credential.password !== password || !user) {
     console.warn("[auth] env bootstrap rejected", {
       email,
