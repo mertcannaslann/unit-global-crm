@@ -1821,6 +1821,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   const property = data.properties.find((item) => item.id === propertyId);
   const consultants = data.users.filter((item) => item.role === "CONSULTANT");
   const defaultConsultantId = property?.consultantId ?? user.id;
+  const [entryMode, setEntryMode] = useState<"link" | "manual">(property?.sourceType === "MANUAL" ? "manual" : "link");
   const form = useForm({
     resolver: zodResolver(propertySchema),
     defaultValues: {
@@ -1842,9 +1843,35 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   });
   const sourcePlatform = form.watch("sourcePlatform");
   const sourceUrl = form.watch("sourceUrl");
-  const isManual = sourcePlatform === "Manuel";
+  const titleValue = form.watch("title");
+  const districtValue = form.watch("district");
+  const neighborhoodValue = form.watch("neighborhood");
+  const roomsValue = form.watch("rooms");
+  const priceValue = Number(form.watch("price"));
+  const squareMetersValue = Number(form.watch("squareMeters"));
+  const isManual = entryMode === "manual";
   const [sourcePreview, setSourcePreview] = useState<ListingPreview | null>(null);
   const [previewStatus, setPreviewStatus] = useState<"idle" | "loading" | "ready" | "empty">("idle");
+  const manualReady = Boolean(
+    titleValue?.trim() &&
+    districtValue?.trim() &&
+    neighborhoodValue?.trim() &&
+    roomsValue?.trim() &&
+    priceValue > 0 &&
+    squareMetersValue >= 20,
+  );
+
+  useEffect(() => {
+    if (entryMode === "manual") {
+      form.setValue("sourcePlatform", "Manuel");
+      form.setValue("sourceType", "MANUAL");
+      setSourcePreview(null);
+      setPreviewStatus("idle");
+      return;
+    }
+    if (form.getValues("sourcePlatform") === "Manuel") form.setValue("sourcePlatform", "Sahibinden");
+    if (form.getValues("sourceType") === "MANUAL") form.setValue("sourceType", "AUTHORIZED_PORTFOLIO");
+  }, [entryMode, form]);
 
   useEffect(() => {
     const trimmedUrl = sourceUrl?.trim() ?? "";
@@ -1892,10 +1919,36 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   if (!canManagePortfolio(user, property)) return <AccessDenied />;
 
   return (
-    <Card className="p-5">
-      <SectionTitle title={property ? "Portföy Düzenle" : "Portföy Ekle"} action="Tek giriş noktası" />
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-blue-100 bg-gradient-to-br from-white via-[#f8fbff] to-[#eef6ff] p-5">
+        <SectionTitle title={property ? "Portföy Düzenle" : "Portföy Ekle"} action="Tek giriş noktası" />
+        <div className="grid gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setEntryMode("link")}
+            className={`rounded-2xl border p-4 text-left transition ${entryMode === "link" ? "border-primary bg-white shadow-lg shadow-blue-950/10" : "border-blue-100 bg-white/70 hover:bg-white"}`}
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-primary">
+              <ExternalLink className="h-4 w-4" />
+            </span>
+            <p className="mt-3 text-sm font-semibold text-slate-950">İlan linki ile ekle</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Sahibinden, Emlakjet, Hürriyet Emlak veya Hepsiemlak linkini yapıştır; sistem bilgileri ön izleme olarak hazırlar.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setEntryMode("manual")}
+            className={`rounded-2xl border p-4 text-left transition ${entryMode === "manual" ? "border-primary bg-white shadow-lg shadow-blue-950/10" : "border-blue-100 bg-white/70 hover:bg-white"}`}
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+              <FolderPlus className="h-4 w-4" />
+            </span>
+            <p className="mt-3 text-sm font-semibold text-slate-950">Manuel detay gir</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Linkten veri alınamazsa başlık, fiyat, lokasyon ve m² bilgilerini danışman elle doldurur.</p>
+          </button>
+        </div>
+      </div>
       <form
-        className="grid gap-4 md:grid-cols-2"
+        className="grid gap-4 p-5 md:grid-cols-2"
         onSubmit={form.handleSubmit((values) => {
           const sourceUrl = values.sourceUrl || values.listingUrl || "";
           if (!isManual && !sourceUrl.trim()) {
@@ -1904,6 +1957,10 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
           }
           if (!isManual && !sourcePreview) {
             toast.error("İlan ön izlemesi alınmadan portföy kaydedilemez. Linki kontrol et veya manuel giriş seç.");
+            return;
+          }
+          if (isManual && !manualReady) {
+            toast.error("Manuel portföy için başlık, fiyat, m², ilçe, mahalle ve oda bilgisi gerekli.");
             return;
           }
           const title = isManual ? values.title : sourcePreview?.title ?? `${values.sourcePlatform} kaynaklı portföy`;
@@ -1935,9 +1992,10 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
               sourceType: sourcePreview.sourceType,
               syncedAt: new Date().toISOString(),
             } : {}),
-            title,
-            listingUrl: sourceUrl,
-            sourceUrl,
+            title: title.trim(),
+            listingUrl: isManual ? values.listingUrl ?? "" : sourcePreview?.sourceUrl ?? sourceUrl,
+            sourceUrl: isManual ? values.listingUrl ?? "" : sourcePreview?.sourceUrl ?? sourceUrl,
+            sourcePlatform: isManual ? "Manuel" : sourcePreview?.sourcePlatform ?? values.sourcePlatform,
             syncStatus: "MANUAL" as const,
             sourceType: isManual ? "MANUAL" as const : sourcePreview?.sourceType ?? values.sourceType,
           };
@@ -1946,51 +2004,50 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
             router.push(`/portfoyler/${property.id}`);
           } else {
             const id = addProperty(payload as Parameters<typeof addProperty>[0]);
-            router.push(`/portfoyler/${id}`);
+            if (id) router.push(`/portfoyler/${id}`);
           }
         })}
       >
-        <div className="md:col-span-2 rounded-lg border border-blue-100 bg-[#f3f8ff] p-4">
-          <p className="text-sm font-semibold text-primary">İlan kaynağı</p>
-          <p className="mt-1 text-sm text-muted-foreground">Sahibinden, Emlakjet, Hürriyet Emlak veya Hepsiemlak linkini yapıştır. Ön izleme hazırlanır; resmi API bağlandığında fotoğraf ve bilgiler aynı akıştan güncellenir.</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-[220px_1fr_220px]">
-            <Select {...form.register("sourcePlatform")}>
-              <option value="Manuel">Manuel</option>
-              <option value="Sahibinden">Sahibinden</option>
-              <option value="Emlakjet">Emlakjet</option>
-              <option value="Hürriyet Emlak">Hürriyet Emlak</option>
-              <option value="Hepsiemlak">Hepsiemlak</option>
-            </Select>
-            <Input placeholder="İlan linki / paylaşım linki" {...form.register("sourceUrl")} />
-            <Select {...form.register("sourceType")}>
-              <option value="MANUAL">Manuel</option>
-              <option value="OWN_LISTING">Kurumsal mağaza</option>
-              <option value="AUTHORIZED_PORTFOLIO">Yetkili portföy</option>
-            </Select>
-          </div>
-          {!isManual ? (
-            <>
-              <div className="mt-3 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs text-muted-foreground">
-                Hızlı kaynak kaydı: Başlık, fiyat, m² gibi alanları doldurman gerekmez. Ön izleme gelirse portföy kaydına otomatik yazılır.
-                {sourceUrl ? <span className="ml-1 text-primary">Link hazır.</span> : null}
+        {!isManual ? (
+          <div className="md:col-span-2 rounded-2xl border border-blue-100 bg-[#f3f8ff] p-4">
+            <p className="text-sm font-semibold text-primary">İlan kaynağı</p>
+            <p className="mt-1 text-sm text-muted-foreground">Danışman sadece ilan linkini yapıştırır. Ön izleme gelmeden kayıt açılmaz; böylece boş portföy oluşmaz.</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-[220px_1fr_220px]">
+              <Select {...form.register("sourcePlatform")}>
+                <option value="Sahibinden">Sahibinden</option>
+                <option value="Emlakjet">Emlakjet</option>
+                <option value="Hürriyet Emlak">Hürriyet Emlak</option>
+                <option value="Hepsiemlak">Hepsiemlak</option>
+              </Select>
+              <Input placeholder="İlan linkini buraya yapıştır" {...form.register("sourceUrl")} />
+              <Select {...form.register("sourceType")}>
+                <option value="AUTHORIZED_PORTFOLIO">Yetkili portföy</option>
+                <option value="OWN_LISTING">Kurumsal mağaza</option>
+              </Select>
+            </div>
+            <div className="mt-3 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs text-muted-foreground">
+              Görseller için önce sayfanın izin verdiği meta/ilan görselleri denenir. Sahibinden izin vermezse bypass yapılmaz; görsel resmi API veya manuel yükleme ile tamamlanır.
+              {sourceUrl ? <span className="ml-1 text-primary">Link hazır.</span> : null}
+            </div>
+            {previewStatus === "loading" ? (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-white p-4 text-sm text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                İlan ön izlemesi hazırlanıyor
               </div>
-              {previewStatus === "loading" ? (
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-white p-4 text-sm text-muted-foreground">
-                  <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-                  İlan ön izlemesi hazırlanıyor
-                </div>
-              ) : null}
-              {sourcePreview ? <ListingPreviewCard preview={sourcePreview} /> : null}
-              {previewStatus === "empty" ? (
-                <div className="mt-3 rounded-lg border border-blue-100 bg-white p-4 text-sm text-muted-foreground">
-                  Bu linkten ön izleme alınamadı. Linki kontrol et veya resmi API bağlantısı aktif olduğunda tekrar dene.
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-        {isManual ? (
+            ) : null}
+            {sourcePreview ? <ListingPreviewCard preview={sourcePreview} /> : null}
+            {previewStatus === "empty" ? (
+              <div className="mt-3 rounded-lg border border-amber-100 bg-white p-4 text-sm text-muted-foreground">
+                Bu linkten ön izleme alınamadı. İlan sitesi görsel/bilgi erişimini kapatmış olabilir; manuel detay gir moduyla kaydı açabilirsin.
+              </div>
+            ) : null}
+          </div>
+        ) : (
           <>
+            <div className="md:col-span-2 rounded-2xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
+              <p className="text-sm font-semibold text-slate-950">Manuel detay paneli</p>
+              <p className="mt-1 text-sm text-muted-foreground">Bu alan sadece linkten veri alınamadığında kullanılır. Eksik bırakılırsa portföy kaydedilmez.</p>
+            </div>
             <Field label="Başlık" error={form.formState.errors.title?.message}><Input {...form.register("title")} /></Field>
             <Field label="Satılık / Kiralık"><Select {...form.register("listingType")}><option value="SATILIK">SATILIK</option><option value="KIRALIK">KIRALIK</option></Select></Field>
             <Field label="Fiyat" error={form.formState.errors.price?.message}><Input type="number" {...form.register("price")} /></Field>
@@ -2000,7 +2057,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
             <Field label="Metrekare" error={form.formState.errors.squareMeters?.message}><Input type="number" {...form.register("squareMeters")} /></Field>
             <Field label="Oda sayısı"><Input {...form.register("rooms")} /></Field>
           </>
-        ) : null}
+        )}
         <input type="hidden" {...form.register("consultantId")} />
         <Field label="Danışman">
           <InfoBox label="Portföy sahibi" value={consultants.find((item) => item.id === defaultConsultantId)?.name ?? user.name} />
@@ -2008,7 +2065,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
         <Field label="Durum"><Select {...form.register("status")}>{statusOptions.map((item) => <option key={item} value={item}>{item}</option>)}</Select></Field>
         <div className="md:col-span-2 flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => router.push("/portfoyler")}>Vazgeç</Button>
-          <Button type="submit" disabled={!isManual && (!sourceUrl?.trim() || !sourcePreview || previewStatus === "loading")}>Kaydet</Button>
+          <Button type="submit" disabled={isManual ? !manualReady : (!sourceUrl?.trim() || !sourcePreview || previewStatus === "loading")}>Kaydet</Button>
         </div>
       </form>
     </Card>
