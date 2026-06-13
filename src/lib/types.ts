@@ -125,6 +125,7 @@ export type Task = {
   googleCalendarResponseStatus?: string;
   calendarInviteUrl?: string;
   calendarInviteStatus?: string;
+  calendarInviteRespondedAt?: string;
   assignedToId: string;
   createdById: string;
   leadId?: string;
