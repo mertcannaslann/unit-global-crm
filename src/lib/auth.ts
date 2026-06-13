@@ -75,7 +75,15 @@ export const authOptions: AuthOptions = {
         if (!user?.passwordHash || user.active === false) return null;
 
         const validPassword = await bcrypt.compare(password, user.passwordHash);
-        if (!validPassword) return null;
+        if (!validPassword) {
+          const bootstrappedUser = await bootstrapUserFromEnv(email, password);
+          if (!bootstrappedUser?.passwordHash || bootstrappedUser.active === false) return null;
+
+          const validBootstrappedPassword = await bcrypt.compare(password, bootstrappedUser.passwordHash);
+          if (!validBootstrappedPassword) return null;
+
+          user = bootstrappedUser;
+        }
 
         return {
           id: user.id,
