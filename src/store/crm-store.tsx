@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { clients as defaultClients, initialData } from "@/lib/demo-data";
 import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
@@ -28,6 +28,7 @@ type CrmContextValue = {
   upsertClient: (client: Omit<OfficeClient, "createdAt"> & { createdAt?: string }) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   addUser: (user: Omit<User, "id" | "avatarColor" | "active">) => void;
+  upsertUsers: (users: User[]) => void;
   deleteUser: (id: string, reassignedToId: string) => void;
   resetClientData: (clientId: string) => void;
 };
@@ -54,7 +55,13 @@ function normalizeData(saved: CrmData): CrmData {
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<CrmData>(initialData);
   const [hydrated, setHydrated] = useState(false);
+  const dirtyRef = useRef(false);
   const saveErrorShown = useRef(false);
+
+  function commitData(updater: SetStateAction<CrmData>) {
+    dirtyRef.current = true;
+    setData(updater);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +93,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !dirtyRef.current) return;
     const timeout = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/crm-state", {
@@ -94,9 +101,15 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ data }),
         });
-        if (!response.ok) throw new Error("CRM verisi kaydedilemedi");
+        const result = (await response.json().catch(() => null)) as { data?: CrmData; error?: string } | null;
+        if (!response.ok || !result?.data) {
+          throw new Error(result?.error ?? "CRM verisi kaydedilemedi");
+        }
+        setData(normalizeData(result.data));
+        dirtyRef.current = false;
         saveErrorShown.current = false;
-      } catch {
+      } catch (error) {
+        console.error(error);
         if (!saveErrorShown.current) {
           toast.error("CRM verisi servera kaydedilemedi.");
           saveErrorShown.current = true;
@@ -123,7 +136,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         return "";
       }
       const id = `property-${Date.now()}`;
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         properties: [
           {
@@ -155,21 +168,21 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       return id;
     },
     updateProperty: (id, patch) => {
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         properties: current.properties.map((item) => (item.id === id ? { ...item, ...patch } : item)),
       }));
       toast.success("Portföy güncellendi");
     },
     deleteProperty: (id) => {
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         properties: current.properties.filter((item) => item.id !== id),
       }));
       toast.success("Portföy silindi");
     },
     addLead: (lead) => {
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         leads: [
           {
@@ -195,7 +208,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       }
       let addedCount = 0;
       let updatedCount = 0;
-      setData((current) => {
+      commitData((current) => {
         const nextLeads = [...current.leads];
         const leadsToAdd: Lead[] = [];
 
@@ -259,40 +272,40 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         note,
         createdAt: new Date().toISOString(),
       };
-      setData((current) => ({ ...current, leadActions: [action, ...current.leadActions] }));
+      commitData((current) => ({ ...current, leadActions: [action, ...current.leadActions] }));
       toast.success("Lead aksiyonu eklendi");
     },
     updateLead: (id, patch) => {
-      setData((current) => ({ ...current, leads: current.leads.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+      commitData((current) => ({ ...current, leads: current.leads.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
       toast.success("Lead güncellendi");
     },
     addTask: (task) => {
       const id = `task-${Date.now()}`;
-      setData((current) => ({ ...current, tasks: [{ ...task, id, status: "ACIK", reminderMinutes: task.reminderMinutes ?? 30 }, ...current.tasks] }));
+      commitData((current) => ({ ...current, tasks: [{ ...task, id, status: "ACIK", reminderMinutes: task.reminderMinutes ?? 30 }, ...current.tasks] }));
       toast.success("Görev oluşturuldu");
       return id;
     },
     updateTask: (id, patch) => {
       if (patch.status === "TAMAMLANDI") {
-        setData((current) => ({ ...current, tasks: current.tasks.filter((item) => item.id !== id) }));
+        commitData((current) => ({ ...current, tasks: current.tasks.filter((item) => item.id !== id) }));
         toast.success("Görev tamamlandı ve listeden kaldırıldı");
         return;
       }
-      setData((current) => ({ ...current, tasks: current.tasks.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+      commitData((current) => ({ ...current, tasks: current.tasks.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
       toast.success("Görev güncellendi");
     },
     addNotification: (notification) => {
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         notifications: [{ ...notification, id: `notification-${Date.now()}`, status: "OKUNMADI", createdAt: new Date().toISOString() }, ...current.notifications],
       }));
       toast.success("Bildirim gönderildi");
     },
     markNotificationRead: (id) => {
-      setData((current) => ({ ...current, notifications: current.notifications.map((item) => (item.id === id ? { ...item, status: "OKUNDU" } : item)) }));
+      commitData((current) => ({ ...current, notifications: current.notifications.map((item) => (item.id === id ? { ...item, status: "OKUNDU" } : item)) }));
     },
     addComparable: (comparable) => {
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         comparables: [{ ...comparable, id: `comp-${Date.now()}`, status: "AKTIF", lastCheckedAt: new Date().toISOString() }, ...current.comparables],
       }));
@@ -304,7 +317,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       const existingUrls = new Set(data.properties.map((property) => property.sourceUrl || property.listingUrl).filter(Boolean));
       const additions = result.added.filter((property) => !existingUrls.has(property.sourceUrl || property.listingUrl));
 
-      setData((current) => ({
+      commitData((current) => ({
         ...current,
         properties: [
           ...additions.filter((property) => !current.properties.some((item) => (item.sourceUrl || item.listingUrl) === (property.sourceUrl || property.listingUrl))),
@@ -323,7 +336,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       }
     },
     upsertClient: (client) => {
-      setData((current) => {
+      commitData((current) => {
         const createdAt = client.createdAt ?? new Date().toISOString();
         const nextClient = { ...client, createdAt };
         const exists = current.clients.some((item) => item.id === client.id);
@@ -335,15 +348,28 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       toast.success("Müşteri ofisi kaydedildi");
     },
     updateUser: (id, patch) => {
-      setData((current) => ({ ...current, users: current.users.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+      commitData((current) => ({ ...current, users: current.users.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
       toast.success("Kullanıcı güncellendi");
     },
     addUser: (user) => {
-      setData((current) => ({ ...current, users: [{ ...user, id: `user-${Date.now()}`, avatarColor: "bg-blue-900", active: true }, ...current.users] }));
+      commitData((current) => ({ ...current, users: [{ ...user, id: `user-${Date.now()}`, avatarColor: "bg-blue-900", active: true }, ...current.users] }));
       toast.success("Kullanıcı eklendi");
     },
+    upsertUsers: (users) => {
+      commitData((current) => {
+        const incomingIds = new Set(users.map((user) => user.id));
+        return {
+          ...current,
+          users: [
+            ...users,
+            ...current.users.filter((user) => !incomingIds.has(user.id)),
+          ],
+        };
+      });
+      toast.success("Ofis kullanıcıları kaydedildi");
+    },
     deleteUser: (id, reassignedToId) => {
-      setData((current) => {
+      commitData((current) => {
         const user = current.users.find((item) => item.id === id);
         if (!user || user.role !== "CONSULTANT") {
           toast.error("Sadece danışman kullanıcı silinebilir.");
@@ -367,7 +393,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       toast.success("Danışman silindi; bağlı kayıtlar ofis sahibine devredildi");
     },
     resetClientData: (clientId) => {
-      setData((current) => {
+      commitData((current) => {
         const client = current.clients.find((item) => item.id === clientId);
         if (!client) {
           toast.error("Müşteri ofisi bulunamadı.");
