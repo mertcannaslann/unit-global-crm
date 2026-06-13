@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1382,7 +1381,7 @@ function SectionTitle({ title, action, padded }: { title: string; action?: React
 function PropertyRow({ property, consultant }: { property: Property; consultant?: User }) {
   return (
     <Link href={`/portfoyler/${property.id}`} className="flex items-center gap-4 px-5 py-4 transition hover:bg-muted/60">
-      <Image src={property.coverImage} alt={property.title} width={80} height={64} className="h-16 w-20 shrink-0 rounded-md object-cover" />
+      <RemoteImage src={property.coverImage} alt={property.title} className="h-16 w-20 shrink-0 rounded-md object-cover" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{property.title}</p>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -1561,15 +1560,34 @@ function PropertiesPage({ user }: { user: User }) {
 }
 
 function PropertyMini({ property }: { property: Property }) {
-  return (
-    <Link href={`/portfoyler/${property.id}`} className="flex items-center gap-3">
-      <Image src={property.coverImage} alt={property.title} width={64} height={48} className="h-12 w-16 rounded-md object-cover" />
+  const sourceHref = property.sourceUrl || property.listingUrl;
+  const content = (
+    <>
+      <RemoteImage src={property.coverImage} alt={property.title} className="h-12 w-16 rounded-md object-cover" />
       <div>
         <p className="font-medium">{property.title}</p>
         <p className="mt-1 text-xs text-muted-foreground">{property.rooms} · {property.squareMeters} m²</p>
       </div>
+    </>
+  );
+
+  if (sourceHref) {
+    return (
+      <a href={sourceHref} target="_blank" rel="noreferrer" className="flex items-center gap-3">
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={`/portfoyler/${property.id}`} className="flex items-center gap-3">
+      {content}
     </Link>
   );
+}
+
+function RemoteImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  return <img src={src} alt={alt} className={className} loading="lazy" referrerPolicy="no-referrer" />;
 }
 
 function Toolbar({ children }: { children: React.ReactNode }) {
@@ -1594,7 +1612,7 @@ function PropertyDetail({ user, propertyId }: { user: User; propertyId: string }
       <div className="space-y-5">
         <Card className="overflow-hidden">
           <div className="relative h-80 w-full">
-            <Image src={property.coverImage} alt={property.title} fill sizes="(min-width: 1280px) 55vw, 100vw" className="object-cover" />
+            <RemoteImage src={property.coverImage} alt={property.title} className="h-full w-full object-cover" />
           </div>
           <div className="p-5">
             <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
@@ -1640,8 +1658,8 @@ function PropertyDetail({ user, propertyId }: { user: User; propertyId: string }
           <SectionTitle title="Fotoğraflar" />
           <div className="grid gap-3 sm:grid-cols-3">
             {(property.gallery.length ? property.gallery : [property.coverImage]).map((image, index) => (
-              <div key={`${image}-${index}`} className="relative h-32 overflow-hidden rounded-md border border-border">
-                <Image src={image} alt={`${property.title} fotoğraf ${index + 1}`} fill sizes="220px" className="object-cover" />
+              <div key={`${image}-${index}`} className="h-32 overflow-hidden rounded-md border border-border">
+                <RemoteImage src={image} alt={`${property.title} fotoğraf ${index + 1}`} className="h-full w-full object-cover" />
               </div>
             ))}
           </div>
@@ -1806,14 +1824,14 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
   const form = useForm({
     resolver: zodResolver(propertySchema),
     defaultValues: {
-      title: property?.title ?? "Kaynak linki ile eklenen portföy",
+      title: property?.title ?? "",
       listingType: property?.listingType ?? "KIRALIK",
       price: property?.price ?? 0,
       currency: property?.currency ?? "TRY",
-      district: property?.district ?? "İstanbul",
-      neighborhood: property?.neighborhood ?? "Belirlenecek",
-      squareMeters: property?.squareMeters ?? 20,
-      rooms: property?.rooms ?? "1+1",
+      district: property?.district ?? "",
+      neighborhood: property?.neighborhood ?? "",
+      squareMeters: property?.squareMeters ?? 0,
+      rooms: property?.rooms ?? "",
       consultantId: defaultConsultantId,
       status: property?.status ?? "AKTIF",
       listingUrl: property?.listingUrl ?? "",
@@ -1845,6 +1863,17 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
         const result = await response.json() as { preview: ListingPreview | null };
         setSourcePreview(result.preview);
         setPreviewStatus(result.preview ? "ready" : "empty");
+        if (result.preview) {
+          form.setValue("title", result.preview.title);
+          form.setValue("listingType", result.preview.listingType);
+          form.setValue("price", result.preview.price);
+          form.setValue("currency", result.preview.currency);
+          form.setValue("district", result.preview.district);
+          form.setValue("neighborhood", result.preview.neighborhood);
+          form.setValue("squareMeters", result.preview.squareMeters);
+          form.setValue("rooms", result.preview.rooms);
+          form.setValue("listingUrl", result.preview.sourceUrl);
+        }
       } catch {
         if (!controller.signal.aborted) {
           setSourcePreview(null);
@@ -1857,7 +1886,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [isManual, sourcePlatform, sourceUrl]);
+  }, [form, isManual, sourcePlatform, sourceUrl]);
 
   if (propertyId && !property) return <Card className="p-8">Portföy bulunamadı.</Card>;
   if (!canManagePortfolio(user, property)) return <AccessDenied />;
@@ -1869,6 +1898,14 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
         className="grid gap-4 md:grid-cols-2"
         onSubmit={form.handleSubmit((values) => {
           const sourceUrl = values.sourceUrl || values.listingUrl || "";
+          if (!isManual && !sourceUrl.trim()) {
+            toast.error("Linkli portföy için ilan linki girmelisin.");
+            return;
+          }
+          if (!isManual && !sourcePreview) {
+            toast.error("İlan ön izlemesi alınmadan portföy kaydedilemez. Linki kontrol et veya manuel giriş seç.");
+            return;
+          }
           const title = isManual ? values.title : sourcePreview?.title ?? `${values.sourcePlatform} kaynaklı portföy`;
           const payload = {
             ...values,
@@ -1893,6 +1930,8 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
               videoUrl: sourcePreview.videoUrl,
               externalId: sourcePreview.externalId,
               sourcePlatform: sourcePreview.sourcePlatform,
+              sourceUrl: sourcePreview.sourceUrl,
+              listingUrl: sourcePreview.sourceUrl,
               sourceType: sourcePreview.sourceType,
               syncedAt: new Date().toISOString(),
             } : {}),
@@ -1969,7 +2008,7 @@ function PropertyEditor({ user, propertyId }: { user: User; propertyId?: string 
         <Field label="Durum"><Select {...form.register("status")}>{statusOptions.map((item) => <option key={item} value={item}>{item}</option>)}</Select></Field>
         <div className="md:col-span-2 flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => router.push("/portfoyler")}>Vazgeç</Button>
-          <Button type="submit">Kaydet</Button>
+          <Button type="submit" disabled={!isManual && (!sourceUrl?.trim() || !sourcePreview || previewStatus === "loading")}>Kaydet</Button>
         </div>
       </form>
     </Card>
@@ -1980,17 +2019,18 @@ function ListingPreviewCard({ preview }: { preview: ListingPreview }) {
   return (
     <div className="mt-3 overflow-hidden rounded-lg border border-blue-100 bg-white shadow-sm shadow-blue-950/5">
       <div className="grid gap-0 md:grid-cols-[220px_1fr]">
-        <div className="relative h-44 md:h-full">
-          <Image src={preview.coverImage} alt={preview.title} fill sizes="220px" className="object-cover" />
+        <div className="h-44 md:h-full">
+          <RemoteImage src={preview.coverImage} alt={preview.title} className="h-full w-full object-cover" />
         </div>
         <div className="p-4">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
             <div>
               <div className="flex flex-wrap gap-2">
                 <Badge label={preview.sourcePlatform} />
-                <Badge label={preview.confidence === "KNOWN_LISTING" ? "Ön izleme hazır" : "URL ön izleme"} />
+                <Badge label={preview.confidence === "KNOWN_LISTING" ? "Ön izleme hazır" : "Canlı ön izleme"} />
               </div>
               <p className="mt-3 text-base font-semibold text-slate-950">{preview.title}</p>
+              <p className="mt-1 text-xs font-medium text-slate-500">İlan No: {preview.externalId}</p>
               <p className="mt-1 text-sm text-muted-foreground">{preview.neighborhood}, {preview.district} · {preview.rooms} · {preview.squareMeters} m²</p>
             </div>
             <p className="text-lg font-semibold text-primary">{money(preview.price, preview.currency)}</p>
@@ -2004,8 +2044,8 @@ function ListingPreviewCard({ preview }: { preview: ListingPreview }) {
           <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{preview.description}</p>
           <div className="mt-4 flex gap-2 overflow-hidden">
             {preview.gallery.slice(0, 4).map((image, index) => (
-              <div key={`${image}-${index}`} className="relative h-14 w-20 shrink-0 overflow-hidden rounded-md border border-border">
-                <Image src={image} alt={`${preview.title} fotoğraf ${index + 1}`} fill sizes="80px" className="object-cover" />
+              <div key={`${image}-${index}`} className="h-14 w-20 shrink-0 overflow-hidden rounded-md border border-border">
+                <RemoteImage src={image} alt={`${preview.title} fotoğraf ${index + 1}`} className="h-full w-full object-cover" />
               </div>
             ))}
           </div>
@@ -2534,6 +2574,7 @@ function LeadsPage({ user }: { user: User }) {
             <Input className="xl:col-span-3" placeholder="Adres" {...form.register("address")} />
             <Input className="xl:col-span-2" list="lead-semt-options" placeholder="Semt" {...form.register("preferredLocation")} />
             <Input className="xl:col-span-2" placeholder="Mülk Sahibi" {...form.register("propertyOwner")} />
+            <Input className="xl:col-span-2" placeholder="Ev sahibi telefonu" {...form.register("propertyOwnerPhone")} />
             <Textarea className="min-h-10 xl:col-span-4" placeholder="Notlar" {...form.register("notes")} />
             {canManageOffice(user) ? (
               <Select className="xl:col-span-2" {...form.register("consultantId")}>
@@ -2693,6 +2734,8 @@ function LeadPopup({
   onClose: () => void;
   onUpdate: (patch: Partial<Lead>) => void;
 }) {
+  const [propertyOwner, setPropertyOwner] = useState(lead.propertyOwner ?? "");
+  const [propertyOwnerPhone, setPropertyOwnerPhone] = useState(lead.propertyOwnerPhone ?? lead.phone ?? "");
   const [tenantStatus, setTenantStatus] = useState<NonNullable<Lead["tenantStatus"]>>(lead.tenantStatus ?? "BILINMIYOR");
   const [tenantName, setTenantName] = useState(lead.tenantName ?? "");
   const [tenantMoveIn, setTenantMoveIn] = useState(lead.tenantMoveIn ?? "");
@@ -2701,6 +2744,8 @@ function LeadPopup({
   const [status, setStatus] = useState<Lead["status"]>(lead.status);
 
   useEffect(() => {
+    setPropertyOwner(lead.propertyOwner ?? "");
+    setPropertyOwnerPhone(lead.propertyOwnerPhone ?? lead.phone ?? "");
     setTenantStatus(lead.tenantStatus ?? "BILINMIYOR");
     setTenantName(lead.tenantName ?? "");
     setTenantMoveIn(lead.tenantMoveIn ?? "");
@@ -2717,7 +2762,7 @@ function LeadPopup({
         <div className="flex items-start justify-between gap-4 border-b border-border bg-white px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Mülk / Kiracı Kartı</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-950">{lead.propertyOwner || lead.name}</h2>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">{propertyOwner || lead.name}</h2>
             <p className="mt-1 text-sm text-muted-foreground">ID {displayLeadId(lead)} · {consultantName}</p>
           </div>
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Kapat">
@@ -2727,8 +2772,8 @@ function LeadPopup({
 
         <div className="max-h-[calc(92vh-76px)] overflow-y-auto p-5">
           <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-7">
-            <InfoRow label="Mülk sahibi" value={lead.propertyOwner || "-"} />
-            <InfoRow label="Telefon" value={lead.propertyOwnerPhone || lead.phone || "-"} />
+            <InfoRow label="Mülk sahibi" value={propertyOwner || "-"} />
+            <InfoRow label="Telefon" value={propertyOwnerPhone || "-"} />
             <InfoRow label="Adres" value={lead.address || "-"} />
             <InfoRow label="Semt" value={lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"} />
             <InfoRow label="Kiracı durumu" value={tenantSummary({ ...lead, tenantStatus, tenantName })} />
@@ -2738,6 +2783,15 @@ function LeadPopup({
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
             <Card className="border-blue-100 bg-[#f7fbff] p-4">
+              <SectionTitle title="Ev Sahibi Bilgisi" action="Danışman düzenler" />
+              <div className="mb-5 grid gap-3 md:grid-cols-2">
+                <Field label="Ev sahibi isim soyisim">
+                  <Input value={propertyOwner} onChange={(event) => setPropertyOwner(event.target.value)} placeholder="Ev sahibi adı soyadı" />
+                </Field>
+                <Field label="Ev sahibi telefonu">
+                  <Input value={propertyOwnerPhone} onChange={(event) => setPropertyOwnerPhone(event.target.value)} placeholder="Telefon" />
+                </Field>
+              </div>
               <SectionTitle title="Kiracı / Kira Bilgisi" action={daysLeft !== null ? tenantReminderText(daysLeft) : "Tarih yok"} />
               <div className="mb-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
@@ -2796,6 +2850,10 @@ function LeadPopup({
               <div className="mt-4 flex justify-end">
                 <Button
                   onClick={() => onUpdate({
+                    propertyOwner,
+                    propertyOwnerPhone,
+                    name: propertyOwner || lead.name,
+                    phone: propertyOwnerPhone || lead.phone,
                     status,
                     tenantStatus,
                     tenantName: tenantStatus === "YOK" ? "" : tenantName,
@@ -2804,7 +2862,7 @@ function LeadPopup({
                     tenantNotes: tenantStatus === "YOK" ? "" : tenantNotes,
                   })}
                 >
-                  Kiracı Bilgisini Kaydet
+                  Ev Sahibi ve Kiracı Bilgisini Kaydet
                 </Button>
               </div>
             </Card>
