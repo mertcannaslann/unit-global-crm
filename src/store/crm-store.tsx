@@ -110,6 +110,18 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<CrmContextValue>(() => ({
     data,
     addProperty: (property) => {
+      const hasValidCore =
+        property.title?.trim() &&
+        property.consultantId &&
+        Number(property.price) > 0 &&
+        Number(property.squareMeters) >= 20 &&
+        property.district?.trim() &&
+        property.neighborhood?.trim() &&
+        property.rooms?.trim();
+      if (!hasValidCore) {
+        toast.error("Portföy eklemek için başlık, fiyat, m², lokasyon ve oda bilgisi gerekli.");
+        return "";
+      }
       const id = `property-${Date.now()}`;
       setData((current) => ({
         ...current,
