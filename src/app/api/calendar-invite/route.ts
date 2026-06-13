@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { initialData } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import { normalizeCrmDataForSecurity, resolveActor, userIdsForCompany } from "@/lib/security";
 import type { CrmData } from "@/lib/types";
 import { sendCalendarInviteEmail } from "@/services/calendar-invite";
@@ -19,6 +20,11 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limit = checkRateLimit(rateLimitKey(request, "calendar-invite", session.user.email), { max: 30, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Çok fazla davet gönderimi denendi." }, { status: 429, headers: rateLimitHeaders(limit) });
   }
 
   const body = await request.json() as {
