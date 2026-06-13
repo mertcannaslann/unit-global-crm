@@ -167,29 +167,6 @@ async function dispatchTaskInvite(input: {
     };
   }
 
-  const googleResponse = await fetch("/api/google-calendar/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      task,
-      attendeeEmail: input.attendeeEmail,
-    }),
-  });
-
-  if (googleResponse.ok) {
-    const result = await googleResponse.json() as {
-      eventId?: string;
-      htmlLink?: string;
-      responseStatus?: string;
-    };
-    return {
-      googleCalendarEventId: result.eventId,
-      googleCalendarHtmlLink: result.htmlLink,
-      googleCalendarResponseStatus: result.responseStatus ?? "needsAction",
-      calendarInviteStatus: "Davet gönderildi",
-    };
-  }
-
   throw new Error(emailResult.error ?? "Davet gönderilemedi.");
 }
 
@@ -3011,9 +2988,9 @@ function TasksPage({ user }: { user: User }) {
         return;
       }
       toast.success("Görev oluşturuldu");
-    } catch {
+    } catch (error) {
       updateTask(id, { calendarInviteStatus: "Davet gönderilemedi" });
-      toast.error("Görev eklendi fakat davet gönderilemedi.");
+      toast.error(error instanceof Error ? error.message : "Görev eklendi fakat davet gönderilemedi.");
     } finally {
       setInviteSending(false);
     }
@@ -3118,7 +3095,7 @@ function TasksPage({ user }: { user: User }) {
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{lead?.name ?? property?.title ?? task.description}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                        {task.calendarInviteStatus === "Davet gönderildi" ? <Badge label={task.googleCalendarResponseStatus ? humanize(task.googleCalendarResponseStatus) : "Yanıt bekleniyor"} /> : null}
+                        {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {column !== "ACIK" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "ACIK" })}>Açık</Button> : null}
@@ -3230,9 +3207,9 @@ function CalendarPage({ user }: { user: User }) {
         return;
       }
       toast.success("Görev oluşturuldu");
-    } catch {
+    } catch (error) {
       updateTask(id, { calendarInviteStatus: "Davet gönderilemedi" });
-      toast.error("Görev eklendi fakat davet gönderilemedi.");
+      toast.error(error instanceof Error ? error.message : "Görev eklendi fakat davet gönderilemedi.");
     } finally {
       setInviteSending(false);
     }
@@ -3297,7 +3274,7 @@ function CalendarPage({ user }: { user: User }) {
                     <p className="mt-1 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Danışman"}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                      {task.googleCalendarResponseStatus && !task.calendarInviteStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                      {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       {task.googleCalendarHtmlLink ? (
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
