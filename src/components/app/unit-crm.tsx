@@ -665,7 +665,7 @@ function AccessDenied() {
 }
 
 function PlatformAdminDashboard({ user }: { user: User }) {
-  const { data, upsertClient, resetClientData } = useCrm();
+  const { data, upsertClient, upsertUsers, resetClientData } = useCrm();
   const unitClient = data.clients.find((client) => client.id === "client-unit-global");
   const [officeName, setOfficeName] = useState("Unit Global");
   const [ownerName, setOwnerName] = useState("Dorukhan Öründü");
@@ -760,6 +760,33 @@ function PlatformAdminDashboard({ user }: { user: User }) {
         password: generateTemporaryPassword(`D${index + 1}`),
       })),
     ];
+    const officeUsersToSave: User[] = [
+      {
+        id: clientId === "client-unit-global" ? "manager-1" : `manager-${slug}`,
+        name: ownerName || "Ofis Sahibi",
+        email: ownerEmail || `owner@${slug}.com`,
+        calendarEmail: ownerEmail || `owner@${slug}.com`,
+        role: "OFFICE_MANAGER",
+        title: "Ofis Sahibi",
+        phone: "Telefon girilecek",
+        avatarColor: "bg-blue-950",
+        active: true,
+        clientId,
+      },
+      ...Array.from({ length: count }).map((_, index): User => ({
+        id: clientId === "client-unit-global" && index === 0 ? "consultant-1" : `consultant-${slug}-${index + 1}`,
+        name: clientId === "client-unit-global" && index === 0 ? "Kaan Öründü" : `Danışman ${index + 1}`,
+        email: clientId === "client-unit-global" && index === 0 ? "kaan@unitglobal.com" : `danisman${index + 1}@${slug}.crm`,
+        calendarEmail: clientId === "client-unit-global" && index === 0 ? "kaan@unitglobal.com" : `danisman${index + 1}@${slug}.crm`,
+        role: "CONSULTANT",
+        title: "Gayrimenkul Danışmanı",
+        phone: "Telefon girilecek",
+        avatarColor: "bg-blue-900",
+        active: true,
+        clientId,
+      })),
+    ];
+    upsertUsers(officeUsersToSave);
     setGeneratedAccounts(accounts);
     toast.success(`${officeName} için ${accounts.length}/${OFFICE_USER_LIMIT} kullanıcı girişi hazırlandı`);
   }
