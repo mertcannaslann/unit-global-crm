@@ -133,6 +133,7 @@ async function dispatchTaskInvite(input: {
   attendeeName?: string;
   companyName: string;
   organizerEmail: string;
+  companyLogoUrl?: string;
 }): Promise<DispatchTaskInviteResult> {
   const task = { id: input.id, ...input.task };
   const googleResponse = await fetch("/api/google-calendar/events", {
@@ -167,6 +168,7 @@ async function dispatchTaskInvite(input: {
       attendeeName: input.attendeeName,
       companyName: input.companyName,
       organizerEmail: input.organizerEmail,
+      companyLogoUrl: input.companyLogoUrl,
     }),
   });
   const result = await emailResponse.json() as { sent?: boolean; mode?: "email"; error?: string };
@@ -2987,6 +2989,7 @@ function TasksPage({ user }: { user: User }) {
         attendeeName: assignedUser.name,
         companyName,
         organizerEmail,
+        companyLogoUrl: activeClient?.logoUrl,
       });
       updateTask(id, inviteResult);
       if (inviteResult.calendarInviteStatus === "Davet gönderildi") {
@@ -3208,6 +3211,7 @@ function CalendarPage({ user }: { user: User }) {
         attendeeName: assignedUser.name,
         companyName,
         organizerEmail,
+        companyLogoUrl: activeClient?.logoUrl,
       });
       updateTask(id, inviteResult);
       if (inviteResult.calendarInviteStatus === "Davet gönderildi") {
