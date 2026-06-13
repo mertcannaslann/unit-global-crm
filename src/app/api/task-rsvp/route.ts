@@ -4,6 +4,7 @@ import { initialData } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
 import type { CalendarInviteResponse } from "@/services/calendar-invite";
 import { verifyTaskRsvp } from "@/services/calendar-invite";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import type { CrmData } from "@/lib/types";
 
 const CRM_STATE_ID = "primary";
@@ -52,6 +53,11 @@ function responsePage(title: string, message: string, status = 200) {
 }
 
 export async function GET(request: Request) {
+  const limit = checkRateLimit(rateLimitKey(request, "task-rsvp"), { max: 30, windowMs: 60_000 });
+  if (!limit.ok) {
+    return responsePage("Çok fazla deneme", "Bu davet linki kısa süre içinde çok fazla denendi.", 429);
+  }
+
   const url = new URL(request.url);
   const taskId = url.searchParams.get("taskId") ?? "";
   const response = url.searchParams.get("response") as CalendarInviteResponse | null;
