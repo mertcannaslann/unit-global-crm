@@ -734,7 +734,27 @@ function PlatformAdminDashboard({ user }: { user: User }) {
     reader.readAsDataURL(file);
   }
 
-  function generateOfficeAccounts() {
+  async function syncUserCredentials(users: User[], accounts: Array<{ email: string; password: string }>) {
+    const passwordByEmail = new Map(accounts.map((account) => [account.email.toLowerCase(), account.password]));
+    const payload = users
+      .map((user) => ({ ...user, password: passwordByEmail.get(user.email.toLowerCase()) }))
+      .filter((user) => user.password);
+
+    if (!payload.length) return;
+
+    const response = await fetch("/api/user-credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ users: payload }),
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(result?.error ?? "Kullanıcı şifreleri güvenli kasaya kaydedilemedi.");
+    }
+  }
+
+  async function generateOfficeAccounts() {
     const maxConsultants = OFFICE_USER_LIMIT - 1;
     const count = Math.max(1, Math.min(maxConsultants, consultantCount));
     upsertClient({
@@ -746,20 +766,6 @@ function PlatformAdminDashboard({ user }: { user: User }) {
       status: "Hazır",
       logoUrl: clientLogoUrl || undefined,
     });
-    const accounts = [
-      {
-        role: "Ofis Sahibi",
-        name: ownerName || "Ofis Sahibi",
-        email: ownerEmail || `owner@${slug}.com`,
-        password: generateTemporaryPassword("Owner"),
-      },
-      ...Array.from({ length: count }).map((_, index) => ({
-        role: "Danışman",
-        name: `Danışman ${index + 1}`,
-        email: `danisman${index + 1}@${slug}.crm`,
-        password: generateTemporaryPassword(`D${index + 1}`),
-      })),
-    ];
     const officeUsersToSave: User[] = [
       {
         id: clientId === "client-unit-global" ? "manager-1" : `manager-${slug}`,
@@ -786,9 +792,20 @@ function PlatformAdminDashboard({ user }: { user: User }) {
         clientId,
       })),
     ];
+    const accounts = officeUsersToSave.map((officeUser, index) => ({
+      role: officeUser.role === "OFFICE_MANAGER" ? "Ofis Sahibi" : "Danışman",
+      name: officeUser.name,
+      email: officeUser.email,
+      password: generateTemporaryPassword(officeUser.role === "OFFICE_MANAGER" ? "Owner" : `D${index}`),
+    }));
     upsertUsers(officeUsersToSave);
-    setGeneratedAccounts(accounts);
-    toast.success(`${officeName} için ${accounts.length}/${OFFICE_USER_LIMIT} kullanıcı girişi hazırlandı`);
+    try {
+      await syncUserCredentials(officeUsersToSave, accounts);
+      setGeneratedAccounts(accounts);
+      toast.success(`${officeName} için ${accounts.length}/${OFFICE_USER_LIMIT} kullanıcı girişi hazırlandı`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Kullanıcı şifreleri güvenli kasaya kaydedilemedi.");
+    }
   }
 
   function handleResetOfficeData(office: (typeof offices)[number]) {
