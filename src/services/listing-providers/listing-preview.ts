@@ -305,8 +305,21 @@ function titleFromHtml(html: string, fallback: string) {
 
 function imagesFromHtml(html: string) {
   const images = new Set<string>();
-  const ogImage = html.match(/property=["']og:image["'][^>]*content=["']([^"']+)["']/i)?.[1];
-  if (ogImage) images.add(decodeHtml(ogImage));
+  const imageAttributes = [
+    ...html.matchAll(/(?:property|name|itemprop)=["'](?:og:image|twitter:image|image)["'][^>]*(?:content|src)=["']([^"']+)["']/gi),
+    ...html.matchAll(/(?:content|src)=["']([^"']+)["'][^>]*(?:property|name|itemprop)=["'](?:og:image|twitter:image|image)["']/gi),
+    ...html.matchAll(/(?:src|data-src|data-original|data-lazy|content)=["']([^"']+)["']/gi),
+  ];
+
+  for (const match of imageAttributes) {
+    const candidates = decodeHtml(match[1]).split(",").map((item) => item.trim().split(/\s+/)[0]).filter(Boolean);
+    for (const candidate of candidates) {
+      const image = candidate.startsWith("//") ? `https:${candidate}` : candidate;
+      if (/^https?:\/\//i.test(image) && /(?:sahibinden|shbdn|classified|image|photo|cdn|img)/i.test(image)) {
+        images.add(image);
+      }
+    }
+  }
 
   for (const match of html.matchAll(/https?:\/\/[^"'()\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"'()\s]*)?/gi)) {
     const image = decodeHtml(match[0]);
