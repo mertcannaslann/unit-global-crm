@@ -6,6 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 
 const datasourceUrl =
   process.env.CRM_DATABASE_URL ??
+  process.env.SUPABASE_DATABASE_URL ??
   process.env.DATABASE_URL ??
   process.env.DATABASE_POSTGRES_PRISMA_URL ??
   process.env.DATABASE_POSTGRES_URL ??
