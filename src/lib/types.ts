@@ -213,6 +213,41 @@ export type ActivityLog = {
   createdAt: string;
 };
 
+export type AuditLogAction =
+  | "CUSTOMER_SEARCH"
+  | "CUSTOMER_LIST_VIEW"
+  | "CUSTOMER_DETAIL_VIEW"
+  | "CUSTOMER_CREATE"
+  | "CUSTOMER_UPDATE"
+  | "CUSTOMER_DELETE"
+  | "CUSTOMER_NOTE_VIEW"
+  | "CUSTOMER_NOTE_CREATE"
+  | "CUSTOMER_FILE_VIEW"
+  | "CUSTOMER_FILE_DOWNLOAD"
+  | "CUSTOMER_EXPORT"
+  | "CUSTOMER_CONTACT_COPY"
+  | "CUSTOMER_FILTER"
+  | "CUSTOMER_BULK_ACTION"
+  | "CUSTOMER_UNAUTHORIZED_ACCESS";
+
+export type AuditLogEntry = {
+  id: string;
+  companyId?: string;
+  userId: string;
+  userRole: Role;
+  action: AuditLogAction;
+  entityType: string;
+  entityId?: string;
+  targetCustomerId?: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
+  requestPath?: string;
+  requestMethod?: string;
+  statusCode: number;
+  createdAt: string;
+};
+
 export type Setting = {
   companyName: string;
   defaultCurrency: "TRY" | "USD" | "EUR";
@@ -235,5 +270,6 @@ export type CrmData = {
   reports: MarketAnalysisReport[];
   priceHistory: PriceHistory[];
   activityLogs: ActivityLog[];
+  auditLogs: AuditLogEntry[];
   setting: Setting;
 };
