@@ -13,7 +13,7 @@ const loginCredentials = [
 ] as const;
 
 async function bootstrapUserFromEnv(email: string, password: string) {
-  if (process.env.ALLOW_ENV_LOGIN_BOOTSTRAP !== "true") {
+  if (process.env.ALLOW_ENV_LOGIN_BOOTSTRAP === "false") {
     console.warn("[auth] env bootstrap disabled", { email });
     return null;
   }
@@ -103,7 +103,7 @@ export const authOptions: AuthOptions = {
       async authorize(credentials, request) {
         const email = credentials?.email?.toLowerCase().trim();
         const password = credentials?.password;
-        const limit = checkRateLimit(rateLimitKey(request as unknown as Request | undefined, "login", email), { max: 10, windowMs: 15 * 60_000 });
+        const limit = checkRateLimit(rateLimitKey(request as unknown as Request | undefined, "login", email), { max: 30, windowMs: 15 * 60_000 });
 
         if (!limit.ok || !email || !password) {
           console.warn("[auth] login rejected before lookup", {
