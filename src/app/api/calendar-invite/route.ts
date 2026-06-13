@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     attendeeName?: string;
     companyName?: string;
     organizerEmail?: string;
+    companyLogoUrl?: string;
   };
 
   const attendeeEmail = body.attendeeEmail?.trim().toLowerCase();
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
     attendeeName: body.attendeeName,
     companyName: body.companyName?.trim() || "Unit CRM",
     organizerEmail,
+    companyLogoUrl: body.companyLogoUrl?.trim(),
   });
 
   if (!result.sent) {
