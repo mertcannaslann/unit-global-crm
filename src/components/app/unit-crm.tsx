@@ -52,7 +52,7 @@ import { initials } from "@/lib/utils";
 import { leadSchema, propertySchema } from "@/lib/validators";
 import { useCrm } from "@/store/crm-store";
 import type { ListingPreview } from "@/services/listing-providers/listing-preview";
-import type { CrmData, Lead, MarketListing, Notification, OfficeClient, Property, User } from "@/lib/types";
+import type { CrmData, Lead, MarketListing, Notification, OfficeClient, Property, Task, User } from "@/lib/types";
 
 type CrmAppProps = {
   slug: string[];
@@ -120,6 +120,64 @@ function calendarEmailForUser(user: User) {
 
 function inviteFromEmailForClient(client?: OfficeClient) {
   return client?.inviteFromEmail?.trim() || "mrtcnasln@gmail.com";
+}
+
+type CreatedTaskPayload = Omit<Task, "id" | "status">;
+
+type DispatchTaskInviteResult = Partial<Pick<Task, "googleCalendarEventId" | "googleCalendarHtmlLink" | "googleCalendarResponseStatus" | "calendarInviteStatus">>;
+
+async function dispatchTaskInvite(input: {
+  id: string;
+  task: CreatedTaskPayload;
+  attendeeEmail: string;
+  attendeeName?: string;
+  companyName: string;
+  organizerEmail: string;
+}): Promise<DispatchTaskInviteResult> {
+  const task = { id: input.id, ...input.task };
+  const googleResponse = await fetch("/api/google-calendar/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task,
+      attendeeEmail: input.attendeeEmail,
+    }),
+  });
+
+  if (googleResponse.ok) {
+    const result = await googleResponse.json() as {
+      eventId?: string;
+      htmlLink?: string;
+      responseStatus?: string;
+    };
+    return {
+      googleCalendarEventId: result.eventId,
+      googleCalendarHtmlLink: result.htmlLink,
+      googleCalendarResponseStatus: result.responseStatus ?? "needsAction",
+      calendarInviteStatus: "Davet gönderildi",
+    };
+  }
+
+  const emailResponse = await fetch("/api/calendar-invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task,
+      attendeeEmail: input.attendeeEmail,
+      attendeeName: input.attendeeName,
+      companyName: input.companyName,
+      organizerEmail: input.organizerEmail,
+    }),
+  });
+  const result = await emailResponse.json() as { sent?: boolean; mode?: "email"; error?: string };
+  if (!emailResponse.ok) {
+    throw new Error(result.error ?? "Davet gönderilemedi.");
+  }
+
+  return {
+    calendarInviteStatus: result.sent ? "Davet gönderildi" : "Davet gönderilemedi",
+    googleCalendarResponseStatus: result.sent ? "needsAction" : undefined,
+  };
 }
 
 function generateTemporaryPassword(prefix = "CRM") {
@@ -2852,8 +2910,24 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
 }
 
 function TasksPage({ user }: { user: User }) {
-  const { data, updateTask } = useCrm();
+  const { data, addTask, updateTask } = useCrm();
   const tasks = data.tasks.filter((task) => canSeeOffice(user) || task.assignedToId === user.id);
+  const assignees = useMemo(() => (canManageOffice(user) ? data.users.filter((item) => item.active && item.role !== "ADMIN") : [user]), [data.users, user]);
+  const defaultAssigneeId = assignees.find((item) => item.role === "CONSULTANT")?.id ?? assignees[0]?.id ?? user.id;
+  const activeClient = clientForUser(data, user);
+  const companyName = activeClient?.name ?? data.setting.companyName;
+  const organizerEmail = inviteFromEmailForClient(activeClient);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
+  const [taskLocation, setTaskLocation] = useState("");
+  const [taskDate, setTaskDate] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const [taskTime, setTaskTime] = useState("10:30");
+  const [taskDurationMinutes, setTaskDurationMinutes] = useState(60);
+  const [taskReminderMinutes, setTaskReminderMinutes] = useState(30);
+  const [taskType, setTaskType] = useState<Task["type"]>("RANDEVU");
+  const [taskPriority, setTaskPriority] = useState<Task["priority"]>("ORTA");
+  const [assignedToId, setAssignedToId] = useState(defaultAssigneeId);
+  const [inviteSending, setInviteSending] = useState(false);
   const columns = ["ACIK", "DEVAM", "TAMAMLANDI"] as const;
   const columnMeta: Record<(typeof columns)[number], { title: string; description: string }> = {
     ACIK: { title: "Açık", description: "Başlanacak işler" },
@@ -2861,8 +2935,145 @@ function TasksPage({ user }: { user: User }) {
     TAMAMLANDI: { title: "Tamamlandı", description: "Kapanan işler" },
   };
 
+  useEffect(() => {
+    if (!assignees.some((item) => item.id === assignedToId)) {
+      setAssignedToId(defaultAssigneeId);
+    }
+  }, [assignedToId, assignees, defaultAssigneeId]);
+
+  const createTaskAndInvite = async () => {
+    const assignedUser = assignees.find((item) => item.id === assignedToId) ?? user;
+    const attendeeEmail = calendarEmailForUser(assignedUser);
+    if (!taskTitle.trim()) {
+      toast.error("Görev başlığı gir.");
+      return;
+    }
+    if (!isValidEmail(attendeeEmail)) {
+      toast.error("Danışmanın davet e-postası geçerli değil.");
+      return;
+    }
+    if (!isValidEmail(organizerEmail)) {
+      toast.error("Ofis davet gönderen e-postası geçerli değil.");
+      return;
+    }
+
+    const [hour = "10", minute = "30"] = taskTime.split(":");
+    const start = new Date(`${taskDate}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00`);
+    if (Number.isNaN(start.getTime())) {
+      toast.error("Geçerli bir görev tarihi seç.");
+      return;
+    }
+    const end = new Date(start.getTime() + taskDurationMinutes * 60 * 1000);
+    const taskPayload = {
+      title: taskTitle.trim(),
+      description: taskDescription.trim() || "Görevler sayfasından oluşturuldu.",
+      type: taskType ?? "RANDEVU",
+      dueDate: start.toISOString(),
+      endDate: end.toISOString(),
+      location: taskLocation.trim(),
+      reminderMinutes: taskReminderMinutes,
+      priority: taskPriority,
+      assignedToId: assignedUser.id,
+      createdById: user.id,
+    };
+    const id = addTask(taskPayload);
+
+    setInviteSending(true);
+    try {
+      const inviteResult = await dispatchTaskInvite({
+        id,
+        task: taskPayload,
+        attendeeEmail,
+        attendeeName: assignedUser.name,
+        companyName,
+        organizerEmail,
+      });
+      updateTask(id, inviteResult);
+      if (inviteResult.calendarInviteStatus === "Davet gönderildi") {
+        toast.success("Görev daveti gönderildi");
+        setTaskTitle("");
+        setTaskDescription("");
+        setTaskLocation("");
+        return;
+      }
+      toast.success("Görev oluşturuldu");
+    } catch {
+      updateTask(id, { calendarInviteStatus: "Davet gönderilemedi" });
+      toast.error("Görev eklendi fakat davet gönderilemedi.");
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
+      <Card className="p-5">
+        <SectionTitle title="Görev Oluştur" action={<Badge label="Davet maili" />} />
+        <p className="mb-5 text-sm text-muted-foreground">Görev CRM’de oluşur, seçilen danışmana takvime eklenebilir davet maili gider.</p>
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_1.1fr_0.8fr_0.8fr]">
+          <Field label="Görev başlığı">
+            <Input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="Örn: Moda ev gösterimi" />
+          </Field>
+          <Field label="Konum">
+            <Input value={taskLocation} onChange={(event) => setTaskLocation(event.target.value)} placeholder="Portföy adı veya açık adres" />
+          </Field>
+          <Field label="Tarih">
+            <Input type="date" value={taskDate} onChange={(event) => setTaskDate(event.target.value)} />
+          </Field>
+          <Field label="Saat">
+            <Input type="time" value={taskTime} onChange={(event) => setTaskTime(event.target.value)} />
+          </Field>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_0.8fr_0.8fr_0.8fr_1fr]">
+          <Field label="Görev türü">
+            <Select value={taskType} onChange={(event) => setTaskType(event.target.value as Task["type"])}>
+              <option value="ARAMA">Arama</option>
+              <option value="RANDEVU">Randevu</option>
+              <option value="YER_GOSTERIMI">Yer Gösterimi</option>
+              <option value="EVRAK_TAKIBI">Evrak Takibi</option>
+              <option value="FOTOGRAF_CEKIMI">Fotoğraf Çekimi</option>
+              <option value="FIYAT_GUNCELLEME">Fiyat Güncelleme</option>
+              <option value="MUSTERI_TAKIBI">Müşteri Takibi</option>
+            </Select>
+          </Field>
+          <Field label="Süre">
+            <Select value={taskDurationMinutes} onChange={(event) => setTaskDurationMinutes(Number(event.target.value))}>
+              <option value={30}>30 dk</option>
+              <option value={60}>1 saat</option>
+              <option value={90}>1.5 saat</option>
+              <option value={120}>2 saat</option>
+            </Select>
+          </Field>
+          <Field label="Hatırlatma">
+            <Select value={taskReminderMinutes} onChange={(event) => setTaskReminderMinutes(Number(event.target.value))}>
+              <option value={15}>15 dk önce</option>
+              <option value={30}>30 dk önce</option>
+              <option value={60}>1 saat önce</option>
+            </Select>
+          </Field>
+          <Field label="Öncelik">
+            <Select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as Task["priority"])}>
+              <option value="DUSUK">Düşük</option>
+              <option value="ORTA">Orta</option>
+              <option value="YUKSEK">Yüksek</option>
+            </Select>
+          </Field>
+          <Field label="Danışman">
+            <Select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}>
+              {assignees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
+          <Field label="Açıklama">
+            <Textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="Danışmana gidecek görev notu" />
+          </Field>
+          <Button className="h-12 px-6" onClick={createTaskAndInvite} disabled={inviteSending}>
+            {inviteSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
+            Görev Oluştur ve Davet Gönder
+          </Button>
+        </div>
+      </Card>
       <div className="grid gap-4 md:grid-cols-3">
         {columns.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column);
@@ -2889,7 +3100,12 @@ function TasksPage({ user }: { user: User }) {
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">{humanize(task.type)} · {shortDate(task.dueDate)}</p>
                       <p className="mt-2 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Atanmadı"}</p>
+                      {task.location ? <p className="mt-2 text-xs text-muted-foreground">Konum: {task.location}</p> : null}
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{lead?.name ?? property?.title ?? task.description}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
+                        {task.calendarInviteStatus === "Davet gönderildi" ? <Badge label={task.googleCalendarResponseStatus ? humanize(task.googleCalendarResponseStatus) : "Yanıt bekleniyor"} /> : null}
+                      </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {column !== "ACIK" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "ACIK" })}>Açık</Button> : null}
                         {column !== "DEVAM" ? <Button size="sm" variant="outline" onClick={() => updateTask(task.id, { status: "DEVAM" })}>Devam</Button> : null}
@@ -2985,36 +3201,23 @@ function CalendarPage({ user }: { user: User }) {
 
     setInviteSending(true);
     try {
-      const response = await fetch("/api/calendar-invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task: { id, ...taskPayload },
-          attendeeEmail: calendarEmailForUser(assignedUser),
-          attendeeName: assignedUser.name,
-          companyName,
-          organizerEmail,
-        }),
+      const inviteResult = await dispatchTaskInvite({
+        id,
+        task: taskPayload,
+        attendeeEmail: calendarEmailForUser(assignedUser),
+        attendeeName: assignedUser.name,
+        companyName,
+        organizerEmail,
       });
-      const result = await response.json() as { sent?: boolean; mode?: "email"; calendarUrl?: string; error?: string };
-
-      if (!response.ok) {
-        updateTask(id, { calendarInviteStatus: "Davet gönderilemedi" });
-        toast.error(result.error ?? "Davet gönderilemedi.");
+      updateTask(id, inviteResult);
+      if (inviteResult.calendarInviteStatus === "Davet gönderildi") {
+        toast.success("Davet gönderildi");
         return;
       }
-
-      updateTask(id, {
-        calendarInviteUrl: result.calendarUrl,
-        calendarInviteStatus: result.sent ? "Davet gönderildi" : "Davet gönderilemedi",
-      });
-      if (result.sent) {
-        toast.success("Takvim daveti gönderildi");
-        return;
-      }
-      toast.success("Takvim daveti hazırlandı");
+      toast.success("Görev oluşturuldu");
     } catch {
-      toast.error("Görev eklendi fakat e-posta daveti hazırlanamadı.");
+      updateTask(id, { calendarInviteStatus: "Davet gönderilemedi" });
+      toast.error("Görev eklendi fakat davet gönderilemedi.");
     } finally {
       setInviteSending(false);
     }
@@ -3092,7 +3295,7 @@ function CalendarPage({ user }: { user: User }) {
           </div>
         </Card>
         <Card className="p-5">
-          <SectionTitle title="Takvime Ekle" />
+          <SectionTitle title="Davet Gönder" />
           <div className="space-y-3">
             <Input placeholder="Örn: Bebek yer gösterimi" value={title} onChange={(event) => setTitle(event.target.value)} />
             <Textarea placeholder="Açıklama / müşteri notu" value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -3120,7 +3323,7 @@ function CalendarPage({ user }: { user: User }) {
             {canManageOffice(user) ? <Select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}>{assignees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}
             <Button className="w-full" onClick={createCalendarTask} disabled={inviteSending}>
               {inviteSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-              Takvime Ekle ve Davet Gönder
+              Görev Oluştur ve Davet Gönder
             </Button>
           </div>
         </Card>
@@ -3455,7 +3658,7 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
     key: "calendarInvites",
     name: "Takvim Davet Maili",
     status: "Şirket adına davet e-postası",
-    scope: "Randevu, yer gösterimi ve takip görevleri için Takvime Ekle maili",
+    scope: "Randevu, yer gösterimi ve takip görevleri için davetiye maili",
     fields: [
       { id: "fromEmail", label: "Gönderen e-posta", placeholder: "info@unitglobal.com" },
       { id: "mailProviderKey", label: "Mail servis anahtarı", placeholder: "Canlı mail servisi bağlanınca girilecek", secret: true },
