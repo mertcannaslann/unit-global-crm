@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
+import { persistAuditEntries, readAuditEntriesForActor } from "@/lib/audit-persistence";
 import { initialData } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import {
   appendAuditLogs,
   createAuditLogEntry,
@@ -51,6 +53,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const limit = checkRateLimit(rateLimitKey(request, "crm-state:get", session.user.email), { max: 120, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Çok fazla istek gönderildi." }, { status: 429, headers: rateLimitHeaders(limit) });
+  }
+
   try {
     logCrmState("GET başladı", { userEmail: session.user.email });
     const fullState = await readFullState();
@@ -69,20 +76,22 @@ export async function GET(request: Request) {
       visible: stateStats(visibleState),
     });
 
-    const auditedState = appendAuditLogs(fullState, [
-      createAuditLogEntry(actor, "CUSTOMER_LIST_VIEW", request, 200, {
-        metadata: {
-          result_count: visibleState.leads.length,
-          page: 1,
-          limit: visibleState.leads.length,
-        },
-      }),
-    ]);
+    const listAuditEntry = createAuditLogEntry(actor, "CUSTOMER_LIST_VIEW", request, 200, {
+      metadata: {
+        result_count: visibleState.leads.length,
+        page: 1,
+        limit: visibleState.leads.length,
+      },
+    });
+    const auditedState = appendAuditLogs(fullState, [listAuditEntry]);
 
     try {
+      await persistAuditEntries([listAuditEntry]);
       await writeFullState(auditedState);
       logCrmState("GET audit yazımı başarılı", { userId: actor.id, tenantId: actor.companyId ?? "platform" });
-      return NextResponse.json({ data: visibleDataForActor(auditedState, actor), meta: { stats: stateStats(visibleState) } });
+      const visibleWithAudit = visibleDataForActor(auditedState, actor);
+      visibleWithAudit.auditLogs = await readAuditEntriesForActor(actor);
+      return NextResponse.json({ data: visibleWithAudit, meta: { stats: stateStats(visibleState) } });
     } catch (auditError) {
       console.error("[crm-state] GET audit yazımı başarısız", auditError);
       return NextResponse.json({ data: visibleState, meta: { stats: stateStats(visibleState), auditWriteFailed: true } });
@@ -97,6 +106,11 @@ export async function PUT(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limit = checkRateLimit(rateLimitKey(request, "crm-state:put", session.user.email), { max: 80, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Çok fazla kayıt isteği gönderildi." }, { status: 429, headers: rateLimitHeaders(limit) });
   }
 
   const body = (await request.json()) as { data?: CrmData };
@@ -127,8 +141,10 @@ export async function PUT(request: Request) {
 
     const merged = mergeAuthorizedCrmState(fullState, incomingState, actor, request);
     const auditedData = appendAuditLogs(merged.data, merged.auditEntries);
+    await persistAuditEntries(merged.auditEntries);
     await writeFullState(auditedData);
     const visibleState = visibleDataForActor(auditedData, actor);
+    visibleState.auditLogs = await readAuditEntriesForActor(actor);
     logCrmState("SAVE database write başarılı", {
       userId: actor.id,
       tenantId: actor.companyId ?? "platform",
@@ -144,6 +160,7 @@ export async function PUT(request: Request) {
           metadata: { reason: error.message },
         }) : undefined);
       if (fullState && auditEntry) {
+        await persistAuditEntries([auditEntry]);
         await writeFullState(appendAuditLogs(fullState, [auditEntry]));
       }
       logCrmState("SAVE forbidden", { userEmail: session.user.email, reason: error.message });
