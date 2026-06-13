@@ -1,3 +1,7 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export type CalendarInviteResponse = "accepted" | "tentative" | "declined";
+
 export type EmailCalendarInvitePayload = {
   task: {
     id: string;
@@ -20,6 +24,41 @@ type SendCalendarInviteResult = {
   mode: "email";
   error?: string;
 };
+
+const responseLabels: Record<CalendarInviteResponse, string> = {
+  accepted: "Kabul Et",
+  tentative: "Belki",
+  declined: "Reddet",
+};
+
+function appBaseUrl() {
+  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
+function rsvpSecret() {
+  return process.env.TASK_RSVP_SECRET || process.env.NEXTAUTH_SECRET || process.env.RESEND_API_KEY || "unit-crm-rsvp-dev";
+}
+
+export function signTaskRsvp(taskId: string, response: CalendarInviteResponse) {
+  return createHmac("sha256", rsvpSecret()).update(`${taskId}:${response}`).digest("hex");
+}
+
+export function verifyTaskRsvp(taskId: string, response: CalendarInviteResponse, token: string) {
+  const expected = signTaskRsvp(taskId, response);
+  const expectedBuffer = Buffer.from(expected);
+  const tokenBuffer = Buffer.from(token);
+  return expectedBuffer.length === tokenBuffer.length && timingSafeEqual(expectedBuffer, tokenBuffer);
+}
+
+function taskRsvpUrl(taskId: string, response: CalendarInviteResponse) {
+  const url = new URL("/api/task-rsvp", appBaseUrl());
+  url.searchParams.set("taskId", taskId);
+  url.searchParams.set("response", response);
+  url.searchParams.set("token", signTaskRsvp(taskId, response));
+  return url.toString();
+}
 
 function calendarDate(value: string) {
   const date = new Date(value);
@@ -44,6 +83,17 @@ function htmlText(value?: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function resendErrorMessage(value: unknown) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  if (text.includes("Testing domain restriction")) {
+    return "Resend test domaini sadece hesap e-postasına gönderir. Diğer danışmanlara mail için domain doğrulaması gerekli.";
+  }
+  if (text.includes("domain")) {
+    return "Mail domain doğrulaması gerekli.";
+  }
+  return "Mail servisi daveti gönderemedi.";
 }
 
 export function buildIcsInvite(payload: EmailCalendarInvitePayload) {
@@ -96,6 +146,11 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
   const description = htmlText(payload.task.description);
   const location = htmlText(payload.task.location);
   const logoUrl = htmlText(payload.companyLogoUrl);
+  const rsvpLinks = (["accepted", "tentative", "declined"] as const).map((response) => ({
+    response,
+    label: responseLabels[response],
+    url: taskRsvpUrl(payload.task.id, response),
+  }));
   const logoBlock = logoUrl
     ? `<img src="${logoUrl}" alt="${companyName}" style="display:block;max-width:190px;max-height:58px;object-fit:contain;border:0;margin:0;" />`
     : `<div style="height:42px;width:42px;border-radius:14px;background:#0f172a;color:#ffffff;font-weight:700;font-size:14px;display:inline-flex;align-items:center;justify-content:center;">CRM</div>`;
@@ -107,6 +162,9 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
     timeLabel,
     payload.task.location ? `Konum: ${payload.task.location}` : "",
     payload.task.description ? `Not: ${payload.task.description}` : "",
+    "",
+    "Yanıt linkleri:",
+    ...rsvpLinks.map((item) => `${item.label}: ${item.url}`),
     "",
     "Bu görev CRM üzerinde oluşturuldu. Davet yanıtı e-posta/takvim uygulamasından verilebilir.",
   ].filter(Boolean).join("\n");
@@ -140,6 +198,16 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
             </tr>
           </table>
           ${payload.task.description ? `<div style="margin:0 0 20px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:16px 18px;color:#334155;font-size:15px;line-height:1.65;">${description}</div>` : ""}
+          <div style="margin:0 0 20px;">
+            <p style="margin:0 0 10px;color:#64748b;font-size:13px;font-weight:700;">Yanıtını seç</p>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px 0;">
+              <tr>
+                <td><a href="${htmlText(rsvpLinks[0].url)}" style="display:inline-block;border-radius:999px;background:#16a34a;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[0].label}</a></td>
+                <td><a href="${htmlText(rsvpLinks[1].url)}" style="display:inline-block;border-radius:999px;background:#f59e0b;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[1].label}</a></td>
+                <td><a href="${htmlText(rsvpLinks[2].url)}" style="display:inline-block;border-radius:999px;background:#ef4444;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[2].label}</a></td>
+              </tr>
+            </table>
+          </div>
           <div style="border:1px solid #dbeafe;background:#f0f7ff;border-radius:16px;padding:15px 17px;color:#1e3a8a;font-size:14px;line-height:1.65;">
             Bu görev ${companyName} CRM üzerinde oluşturuldu. Daveti e-posta veya takvim uygulamandan yanıtlayabilirsin.
           </div>
@@ -192,7 +260,8 @@ export async function sendCalendarInviteEmail(payload: EmailCalendarInvitePayloa
     });
 
     if (!response.ok) {
-      return { sent: false, mode: "email", error: "Mail servisi daveti gönderemedi." };
+      const errorBody = await response.json().catch(() => response.text().catch(() => ""));
+      return { sent: false, mode: "email", error: resendErrorMessage(errorBody) };
     }
 
     return { sent: true, mode: "email" };
