@@ -136,6 +136,26 @@ async function dispatchTaskInvite(input: {
   companyLogoUrl?: string;
 }): Promise<DispatchTaskInviteResult> {
   const task = { id: input.id, ...input.task };
+  const emailResponse = await fetch("/api/calendar-invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task,
+      attendeeEmail: input.attendeeEmail,
+      attendeeName: input.attendeeName,
+      companyName: input.companyName,
+      organizerEmail: input.organizerEmail,
+      companyLogoUrl: input.companyLogoUrl,
+    }),
+  });
+  const emailResult = await emailResponse.json() as { sent?: boolean; mode?: "email"; error?: string };
+  if (emailResponse.ok && emailResult.sent) {
+    return {
+      calendarInviteStatus: "Davet gönderildi",
+      googleCalendarResponseStatus: "needsAction",
+    };
+  }
+
   const googleResponse = await fetch("/api/google-calendar/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -159,27 +179,7 @@ async function dispatchTaskInvite(input: {
     };
   }
 
-  const emailResponse = await fetch("/api/calendar-invite", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      task,
-      attendeeEmail: input.attendeeEmail,
-      attendeeName: input.attendeeName,
-      companyName: input.companyName,
-      organizerEmail: input.organizerEmail,
-      companyLogoUrl: input.companyLogoUrl,
-    }),
-  });
-  const result = await emailResponse.json() as { sent?: boolean; mode?: "email"; error?: string };
-  if (!emailResponse.ok) {
-    throw new Error(result.error ?? "Davet gönderilemedi.");
-  }
-
-  return {
-    calendarInviteStatus: result.sent ? "Davet gönderildi" : "Davet gönderilemedi",
-    googleCalendarResponseStatus: result.sent ? "needsAction" : undefined,
-  };
+  throw new Error(emailResult.error ?? "Davet gönderilemedi.");
 }
 
 function generateTemporaryPassword(prefix = "CRM") {
