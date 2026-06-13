@@ -342,6 +342,29 @@ model ActivityLog {
   createdAt DateTime @default(now())
 }
 
+model AuditLog {
+  id               String   @id @default(cuid())
+  companyId        String?
+  userId           String
+  userRole         Role
+  action           String
+  entityType       String
+  entityId         String?
+  targetCustomerId String?
+  metadata         Json?
+  ipAddress        String?
+  userAgent        String?
+  requestPath      String?
+  requestMethod    String?
+  statusCode       Int
+  createdAt        DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([targetCustomerId, createdAt])
+  @@index([action, createdAt])
+}
+
 model Setting {
   id                String   @id @default(cuid())
   companyName       String
