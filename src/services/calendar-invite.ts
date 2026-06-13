@@ -21,10 +21,6 @@ type SendCalendarInviteResult = {
   error?: string;
 };
 
-function encode(value: string) {
-  return encodeURIComponent(value);
-}
-
 function calendarDate(value: string) {
   const date = new Date(value);
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -50,14 +46,15 @@ export function buildGoogleCalendarUrl(payload: EmailCalendarInvitePayload) {
     "",
     `${payload.companyName} CRM üzerinden oluşturuldu.`,
   ].filter(Boolean).join("\n");
+  const params = new URLSearchParams({
+    text: payload.task.title,
+    dates: `${start}/${end}`,
+    details,
+    location: payload.task.location ?? "",
+    pli: "1",
+  });
 
-  return [
-    "https://calendar.google.com/calendar/render?action=TEMPLATE",
-    `text=${encode(payload.task.title)}`,
-    `dates=${start}/${end}`,
-    `details=${encode(details)}`,
-    `location=${encode(payload.task.location ?? "")}`,
-  ].join("&");
+  return `https://calendar.google.com/calendar/u/0/r/eventedit?${params.toString()}`;
 }
 
 export function buildIcsInvite(payload: EmailCalendarInvitePayload) {
