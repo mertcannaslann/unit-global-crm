@@ -709,6 +709,7 @@ export const initialData: CrmData = {
   reports: [],
   priceHistory: [],
   activityLogs: [],
+  auditLogs: [],
   setting: {
     companyName: "Unit Global",
     defaultCurrency: "TRY",
