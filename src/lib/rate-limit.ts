@@ -15,13 +15,27 @@ const globalForRateLimit = globalThis as unknown as {
 const buckets = globalForRateLimit.crmRateLimitBuckets ?? new Map<string, Bucket>();
 globalForRateLimit.crmRateLimitBuckets = buckets;
 
-function clientIp(request?: Request) {
-  const forwardedFor = request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const realIp = request?.headers.get("x-real-ip")?.trim();
+type HeaderLike = Headers | Record<string, string | string[] | undefined>;
+
+function readHeader(headers: HeaderLike | undefined, key: string) {
+  if (!headers) return undefined;
+
+  if (typeof (headers as Headers).get === "function") {
+    return (headers as Headers).get(key) ?? undefined;
+  }
+
+  const record = headers as Record<string, string | string[] | undefined>;
+  const value = record[key] ?? record[key.toLowerCase()] ?? record[key.toUpperCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function clientIp(request?: Request | { headers?: HeaderLike }) {
+  const forwardedFor = readHeader(request?.headers, "x-forwarded-for")?.split(",")[0]?.trim();
+  const realIp = readHeader(request?.headers, "x-real-ip")?.trim();
   return forwardedFor || realIp || "unknown";
 }
 
-export function rateLimitKey(request: Request | undefined, scope: string, identity?: string | null) {
+export function rateLimitKey(request: Request | { headers?: HeaderLike } | undefined, scope: string, identity?: string | null) {
   return [scope, identity?.toLowerCase().trim() || "anonymous", clientIp(request)].join(":");
 }
 
