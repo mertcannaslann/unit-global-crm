@@ -14,6 +14,6 @@ export async function GET(request: Request) {
   const platform = searchParams.get("platform") ?? undefined;
 
   return NextResponse.json({
-    preview: getListingPreview(sourceUrl, platform),
+    preview: await getListingPreview(sourceUrl, platform),
   });
 }
