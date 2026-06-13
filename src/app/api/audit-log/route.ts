@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
+import { persistAuditEntries, readAuditEntriesForActor } from "@/lib/audit-persistence";
 import { initialData } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import {
   appendAuditLogs,
   assertCanAccessLead,
@@ -57,6 +59,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const limit = checkRateLimit(rateLimitKey(request, "audit-log:get", session.user.email), { max: 80, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Çok fazla audit isteği gönderildi." }, { status: 429, headers: rateLimitHeaders(limit) });
+  }
+
   const fullState = await readFullState();
   const actor = resolveActor(fullState, session.user);
   if (!actor || actor.role === "CONSULTANT") {
@@ -70,8 +77,8 @@ export async function GET(request: Request) {
   const ip = url.searchParams.get("ip");
   const statusCode = url.searchParams.get("statusCode");
 
-  const logs = fullState.auditLogs
-    .filter((entry) => actor.role === "ADMIN" || entry.companyId === actor.companyId)
+  const dbLogs = await readAuditEntriesForActor(actor);
+  const logs = dbLogs
     .filter((entry) => !action || entry.action === action)
     .filter((entry) => !userId || entry.userId === userId)
     .filter((entry) => !customerId || entry.targetCustomerId === customerId)
@@ -85,6 +92,11 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limit = checkRateLimit(rateLimitKey(request, "audit-log:post", session.user.email), { max: 120, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Çok fazla audit kaydı gönderildi." }, { status: 429, headers: rateLimitHeaders(limit) });
   }
 
   const fullState = await readFullState();
@@ -116,6 +128,7 @@ export async function POST(request: Request) {
       targetCustomerId: body.targetCustomerId,
       metadata: body.metadata,
     });
+    await persistAuditEntries([entry]);
     await writeFullState(appendAuditLogs(fullState, [entry]));
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -125,6 +138,7 @@ export async function POST(request: Request) {
           targetCustomerId: body.targetCustomerId,
           metadata: { reason: error.message },
         });
+      await persistAuditEntries([auditEntry]);
       await writeFullState(appendAuditLogs(fullState, [auditEntry]));
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
