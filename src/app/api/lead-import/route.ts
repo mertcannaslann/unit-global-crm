@@ -2,6 +2,7 @@ import { inflateRawSync } from "node:zlib";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 const MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -200,6 +201,11 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limit = checkRateLimit(rateLimitKey(request, "lead-import", session.user.email), { max: 12, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Çok fazla Excel yükleme denemesi yapıldı." }, { status: 429, headers: rateLimitHeaders(limit) });
   }
 
   try {
