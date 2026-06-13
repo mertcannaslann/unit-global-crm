@@ -34,10 +34,11 @@ export function googleCalendarConfigReady() {
 }
 
 export function googleOAuthRedirectUri() {
-  return process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/google-calendar/callback`;
+  const appBaseUrl = process.env.NEXTAUTH_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+  return process.env.GOOGLE_OAUTH_REDIRECT_URI || `${appBaseUrl}/api/google-calendar/callback`;
 }
 
-export function buildGoogleOAuthUrl(state: string) {
+export function buildGoogleOAuthUrl(state: string, loginHint?: string) {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
     redirect_uri: googleOAuthRedirectUri(),
@@ -48,6 +49,7 @@ export function buildGoogleOAuthUrl(state: string) {
     include_granted_scopes: "true",
     state,
   });
+  if (loginHint) params.set("login_hint", loginHint);
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
@@ -112,6 +114,15 @@ function eventEndDate(task: CalendarTaskPayload) {
   return new Date(new Date(task.dueDate).getTime() + 60 * 60 * 1000);
 }
 
+function eventDescription(task: CalendarTaskPayload) {
+  return [
+    task.description,
+    "",
+    "Bu görev CRM içinde oluşturuldu.",
+    "Yanıtını takvim daveti üzerinden verebilirsin.",
+  ].filter(Boolean).join("\n");
+}
+
 export function buildCalendarEvent(task: CalendarTaskPayload, attendeeEmail: string) {
   const start = new Date(task.dueDate);
   const end = eventEndDate(task);
@@ -119,7 +130,7 @@ export function buildCalendarEvent(task: CalendarTaskPayload, attendeeEmail: str
 
   return {
     summary: task.title,
-    description: task.description,
+    description: eventDescription(task),
     location: task.location || undefined,
     start: {
       dateTime: start.toISOString(),
