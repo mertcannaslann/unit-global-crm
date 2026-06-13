@@ -52,7 +52,7 @@ import { initials } from "@/lib/utils";
 import { leadSchema, propertySchema } from "@/lib/validators";
 import { useCrm } from "@/store/crm-store";
 import type { ListingPreview } from "@/services/listing-providers/listing-preview";
-import type { CrmData, Lead, MarketListing, Notification, OfficeClient, Property, Task, User } from "@/lib/types";
+import type { AuditLogAction, CrmData, Lead, MarketListing, Notification, OfficeClient, Property, Task, User } from "@/lib/types";
 
 type CrmAppProps = {
   slug: string[];
@@ -168,6 +168,23 @@ async function dispatchTaskInvite(input: {
   }
 
   throw new Error(emailResult.error ?? "Davet gönderilemedi.");
+}
+
+async function auditCustomerEvent(action: AuditLogAction, input: {
+  targetCustomerId?: string;
+  entityId?: string;
+  entityType?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await fetch("/api/audit-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...input }),
+    });
+  } catch {
+    // Audit logging must never block the user's CRM workflow.
+  }
 }
 
 function generateTemporaryPassword(prefix = "CRM") {
@@ -2397,6 +2414,48 @@ function LeadsPage({ user }: { user: User }) {
     }
   }, [form, watchedAddress]);
 
+  useEffect(() => {
+    if (!normalizedQuery) return;
+    const timeout = window.setTimeout(() => {
+      void auditCustomerEvent("CUSTOMER_SEARCH", {
+        metadata: {
+          search_query: query.trim(),
+          filters: { groupBy },
+          result_count: leads.length,
+          page: 1,
+          limit: leads.length,
+        },
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [groupBy, leads.length, normalizedQuery, query]);
+
+  useEffect(() => {
+    if (groupBy === "NONE") return;
+    void auditCustomerEvent("CUSTOMER_FILTER", {
+      metadata: {
+        search_query: query.trim(),
+        filters: { groupBy },
+        result_count: leads.length,
+        page: 1,
+        limit: leads.length,
+      },
+    });
+  }, [groupBy, leads.length, query]);
+
+  useEffect(() => {
+    if (!selectedLead) return;
+    void auditCustomerEvent("CUSTOMER_DETAIL_VIEW", {
+      targetCustomerId: selectedLead.id,
+      metadata: { source: "lead_popup" },
+    });
+    void auditCustomerEvent("CUSTOMER_NOTE_VIEW", {
+      targetCustomerId: selectedLead.id,
+      metadata: { source: "lead_popup" },
+    });
+  }, [selectedLead]);
+
   async function handleLeadImport(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -2512,7 +2571,17 @@ function LeadsPage({ user }: { user: User }) {
           <option value="DANISMAN">Danışmana göre grupla</option>
         </Select>
         {canManageOffice(user) ? (
-          <Button variant="outline" onClick={() => exportLeadsToExcel(leads, data.users)}>
+          <Button variant="outline" onClick={() => {
+            void auditCustomerEvent("CUSTOMER_EXPORT", {
+              metadata: {
+                export_type: "excel",
+                selected_fields: ["ID", "Mülk Sahibi", "Telefon", "Adres", "Semt", "Kiracı Bilgisi", "Danışman", "Durum", "Notlar"],
+                row_count: leads.length,
+                filters: { groupBy, search_query: query.trim() },
+              },
+            });
+            exportLeadsToExcel(leads, data.users);
+          }}>
             <Download className="h-4 w-4" />
             Excel’e Aktar
           </Button>
@@ -2588,6 +2657,10 @@ function LeadsPage({ user }: { user: User }) {
             }
             const nextNotes = [selectedLead.notes, cleanNote].filter(Boolean).join("\n");
             addLeadAction(selectedLead.id, user.id, cleanNote);
+            void auditCustomerEvent("CUSTOMER_NOTE_CREATE", {
+              targetCustomerId: selectedLead.id,
+              metadata: { note_length: cleanNote.length },
+            });
             updateLead(selectedLead.id, { notes: nextNotes });
             setSelectedLead((current) => (current ? { ...current, notes: nextNotes } : current));
             setNote("");
@@ -2775,6 +2848,18 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
     setTenantMoveOut(lead.tenantMoveOut ?? "");
   }, [lead]);
 
+  useEffect(() => {
+    if (!lead || (!canSeeOffice(user) && lead.consultantId !== user.id)) return;
+    void auditCustomerEvent("CUSTOMER_DETAIL_VIEW", {
+      targetCustomerId: lead.id,
+      metadata: { source: "lead_detail_page" },
+    });
+    void auditCustomerEvent("CUSTOMER_NOTE_VIEW", {
+      targetCustomerId: lead.id,
+      metadata: { source: "lead_detail_page" },
+    });
+  }, [lead, user]);
+
   if (!lead) return <Card className="p-8">Müşteri bulunamadı.</Card>;
   if (!canSeeOffice(user) && lead.consultantId !== user.id) return <AccessDenied />;
 
@@ -2854,7 +2939,15 @@ function LeadDetail({ user, leadId }: { user: User; leadId: string }) {
               </div>
             ))}
             <Textarea placeholder="Yeni görüşme notu" value={note} onChange={(event) => setNote(event.target.value)} />
-            <Button onClick={() => { addLeadAction(lead.id, user.id, note || "Görüşme notu eklendi."); setNote(""); }}>Not Ekle</Button>
+            <Button onClick={() => {
+              const cleanNote = note || "Görüşme notu eklendi.";
+              addLeadAction(lead.id, user.id, cleanNote);
+              void auditCustomerEvent("CUSTOMER_NOTE_CREATE", {
+                targetCustomerId: lead.id,
+                metadata: { note_length: cleanNote.length },
+              });
+              setNote("");
+            }}>Not Ekle</Button>
           </div>
         </Card>
 
@@ -3742,6 +3835,98 @@ function IntegrationsPage() {
   );
 }
 
+function AuditLogPanel({ data, user }: { data: CrmData; user: User }) {
+  const [actionFilter, setActionFilter] = useState("ALL");
+  const [userFilter, setUserFilter] = useState("ALL");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [ipFilter, setIpFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  if (user.role === "CONSULTANT") return null;
+
+  const actions = Array.from(new Set(data.auditLogs.map((entry) => entry.action))).sort();
+  const filteredLogs = data.auditLogs.filter((entry) => {
+    const customer = data.leads.find((lead) => lead.id === entry.targetCustomerId);
+    const customerText = `${entry.targetCustomerId ?? ""} ${customer?.name ?? ""} ${customer?.propertyOwner ?? ""}`.toLocaleLowerCase("tr");
+    const created = new Date(entry.createdAt).getTime();
+    const start = startDate ? new Date(`${startDate}T00:00:00`).getTime() : null;
+    const end = endDate ? new Date(`${endDate}T23:59:59`).getTime() : null;
+    return (
+      (actionFilter === "ALL" || entry.action === actionFilter) &&
+      (userFilter === "ALL" || entry.userId === userFilter) &&
+      (!customerFilter.trim() || customerText.includes(customerFilter.toLocaleLowerCase("tr").trim())) &&
+      (!ipFilter.trim() || (entry.ipAddress ?? "").includes(ipFilter.trim())) &&
+      (statusFilter === "ALL" || String(entry.statusCode) === statusFilter) &&
+      (!start || created >= start) &&
+      (!end || created <= end)
+    );
+  });
+
+  return (
+    <Card className="overflow-hidden">
+      <SectionTitle title="Güvenlik Kayıtları" action={<Badge label={`${filteredLogs.length} kayıt`} />} padded />
+      <div className="grid gap-3 border-y border-border bg-slate-50 p-4 md:grid-cols-3 xl:grid-cols-6">
+        <Select value={userFilter} onChange={(event) => setUserFilter(event.target.value)}>
+          <option value="ALL">Kullanıcı: Tümü</option>
+          {data.users.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </Select>
+        <Select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)}>
+          <option value="ALL">İşlem: Tümü</option>
+          {actions.map((action) => <option key={action} value={action}>{action}</option>)}
+        </Select>
+        <Input value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} placeholder="Müşteri ara" />
+        <Input value={ipFilter} onChange={(event) => setIpFilter(event.target.value)} placeholder="IP" />
+        <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option value="ALL">Status: Tümü</option>
+          <option value="200">200</option>
+          <option value="403">403</option>
+        </Select>
+        <div className="grid grid-cols-2 gap-2">
+          <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+          <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+        </div>
+      </div>
+      <div className="max-h-[520px] overflow-auto">
+        <table className="w-full min-w-[980px] border-collapse text-xs">
+          <thead className="sticky top-0 bg-white text-left uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="border-b border-border px-4 py-3 font-semibold">Tarih</th>
+              <th className="border-b border-border px-4 py-3 font-semibold">Kullanıcı</th>
+              <th className="border-b border-border px-4 py-3 font-semibold">İşlem</th>
+              <th className="border-b border-border px-4 py-3 font-semibold">Müşteri</th>
+              <th className="border-b border-border px-4 py-3 font-semibold">IP</th>
+              <th className="border-b border-border px-4 py-3 font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {filteredLogs.slice(0, 100).map((entry) => {
+              const actor = data.users.find((item) => item.id === entry.userId);
+              const customer = data.leads.find((lead) => lead.id === entry.targetCustomerId);
+              return (
+                <tr key={entry.id} className={entry.statusCode >= 400 ? "bg-red-50/70" : "bg-white hover:bg-slate-50"}>
+                  <td className="px-4 py-3">{shortDate(entry.createdAt)}</td>
+                  <td className="px-4 py-3 font-medium text-slate-950">{actor?.name ?? entry.userId}</td>
+                  <td className="px-4 py-3"><Badge label={entry.action} /></td>
+                  <td className="px-4 py-3">{customer?.propertyOwner || customer?.name || entry.targetCustomerId || "-"}</td>
+                  <td className="px-4 py-3 font-mono">{entry.ipAddress ?? "-"}</td>
+                  <td className="px-4 py-3">{entry.statusCode}</td>
+                </tr>
+              );
+            })}
+            {!filteredLogs.length ? (
+              <tr>
+                <td className="px-4 py-10 text-center text-sm text-muted-foreground" colSpan={6}>Güvenlik kaydı bulunamadı.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 function SettingsPage({ user }: { user: User }) {
   const { data, addUser, updateUser, deleteUser, upsertClient } = useCrm();
   const isPlatform = user.role === "ADMIN";
@@ -3813,26 +3998,29 @@ function SettingsPage({ user }: { user: User }) {
 
   if (isPlatform) {
     return (
-      <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
-        <Card className="p-5">
-          <SectionTitle title="Platform Ayarları" />
-          <div className="grid gap-4 md:grid-cols-3">
-            <Metric label="Müşteri ofisi" value={data.clients.length.toString()} detail="Aktif müşteri paneli" />
-            <Metric label="Toplam kullanıcı" value={members.length.toString()} detail={`${OFFICE_USER_LIMIT} kullanıcı limitli ofis`} />
-            <Metric label="Aktif panel" value="3" detail="Admin, owner, danışman" />
-          </div>
-          <p className="mt-5 rounded-md border border-blue-100 bg-[#f7fbff] p-4 text-sm leading-6 text-muted-foreground">
-            Platform admin tarafı müşteri ofislerini, paketleri ve genel kullanım istatistiklerini yönetir. Unit Global ofis içi kullanıcıları Dorukhan Öründü tarafından kendi panelinden yönetilir.
-          </p>
-        </Card>
-        <Card className="p-5">
-          <SectionTitle title="Yetki Modeli" />
-          <div className="space-y-3 text-sm">
-            <InfoRow label="Platform Admin" value="Müşteri ofisleri ve üyelik paketleri" />
-            <InfoRow label="Ofis Sahibi" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar ekip yönetimi`} />
-            <InfoRow label="Danışman" value="Portföy girişi, müşteri takibi ve atanmış görevler" />
-          </div>
-        </Card>
+      <div className="space-y-5">
+        <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+          <Card className="p-5">
+            <SectionTitle title="Platform Ayarları" />
+            <div className="grid gap-4 md:grid-cols-3">
+              <Metric label="Müşteri ofisi" value={data.clients.length.toString()} detail="Aktif müşteri paneli" />
+              <Metric label="Toplam kullanıcı" value={members.length.toString()} detail={`${OFFICE_USER_LIMIT} kullanıcı limitli ofis`} />
+              <Metric label="Aktif panel" value="3" detail="Admin, owner, danışman" />
+            </div>
+            <p className="mt-5 rounded-md border border-blue-100 bg-[#f7fbff] p-4 text-sm leading-6 text-muted-foreground">
+              Platform admin tarafı müşteri ofislerini, paketleri ve genel kullanım istatistiklerini yönetir. Unit Global ofis içi kullanıcıları Dorukhan Öründü tarafından kendi panelinden yönetilir.
+            </p>
+          </Card>
+          <Card className="p-5">
+            <SectionTitle title="Yetki Modeli" />
+            <div className="space-y-3 text-sm">
+              <InfoRow label="Platform Admin" value="Müşteri ofisleri ve üyelik paketleri" />
+              <InfoRow label="Ofis Sahibi" value={`Owner dahil ${OFFICE_USER_LIMIT} kullanıcıya kadar ekip yönetimi`} />
+              <InfoRow label="Danışman" value="Portföy girişi, müşteri takibi ve atanmış görevler" />
+            </div>
+          </Card>
+        </div>
+        <AuditLogPanel data={data} user={user} />
       </div>
     );
   }
@@ -3928,6 +4116,8 @@ function SettingsPage({ user }: { user: User }) {
           ))}
         </div>
       </Card>
+
+      <AuditLogPanel data={data} user={user} />
     </div>
   );
 }
