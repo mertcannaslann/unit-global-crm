@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { initialData } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
 import type { CalendarInviteResponse } from "@/services/calendar-invite";
@@ -84,8 +85,8 @@ export async function GET(request: Request) {
 
   await prisma.crmState.upsert({
     where: { id: CRM_STATE_ID },
-    create: { id: CRM_STATE_ID, data: nextData },
-    update: { data: nextData },
+    create: { id: CRM_STATE_ID, data: nextData as unknown as Prisma.InputJsonValue },
+    update: { data: nextData as unknown as Prisma.InputJsonValue },
   });
 
   return responsePage("Yanıt kaydedildi", `${taskTitle} görevi için yanıtın CRM'e ${responseLabels[response]} olarak işlendi.`);
