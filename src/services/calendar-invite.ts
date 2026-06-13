@@ -12,6 +12,7 @@ export type EmailCalendarInvitePayload = {
   attendeeName?: string;
   companyName: string;
   organizerEmail: string;
+  companyLogoUrl?: string;
 };
 
 type SendCalendarInviteResult = {
@@ -35,6 +36,14 @@ function icsText(value?: string) {
 
 function defaultEndDate(startDate: string) {
   return new Date(new Date(startDate).getTime() + 60 * 60 * 1000).toISOString();
+}
+
+function htmlText(value?: string) {
+  return (value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export function buildIcsInvite(payload: EmailCalendarInvitePayload) {
@@ -79,11 +88,22 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
   const start = new Date(payload.task.dueDate);
   const end = new Date(payload.task.endDate ?? defaultEndDate(payload.task.dueDate));
   const timeLabel = `${start.toLocaleDateString("tr-TR")} ${start.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
-  const subject = `Görev Daveti: ${payload.task.title}`;
+  const recipientName = payload.attendeeName?.trim() || payload.attendeeEmail;
+  const subject = `${recipientName} | Görev Daveti`;
+  const companyName = htmlText(payload.companyName);
+  const title = htmlText(payload.task.title);
+  const recipientTitle = htmlText(recipientName);
+  const description = htmlText(payload.task.description);
+  const location = htmlText(payload.task.location);
+  const logoUrl = htmlText(payload.companyLogoUrl);
+  const logoBlock = logoUrl
+    ? `<img src="${logoUrl}" alt="${companyName}" style="display:block;max-width:190px;max-height:58px;object-fit:contain;border:0;margin:0;" />`
+    : `<div style="height:42px;width:42px;border-radius:14px;background:#0f172a;color:#ffffff;font-weight:700;font-size:14px;display:inline-flex;align-items:center;justify-content:center;">CRM</div>`;
   const text = [
     `${payload.companyName} görev daveti`,
     "",
-    payload.task.title,
+    recipientName,
+    `Görev: ${payload.task.title}`,
     timeLabel,
     payload.task.location ? `Konum: ${payload.task.location}` : "",
     payload.task.description ? `Not: ${payload.task.description}` : "",
@@ -91,17 +111,42 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
     "Bu görev CRM üzerinde oluşturuldu. Davet yanıtı e-posta/takvim uygulamasından verilebilir.",
   ].filter(Boolean).join("\n");
   const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;padding:28px;color:#0f172a;">
-      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;padding:28px;box-shadow:0 18px 45px rgba(15,23,42,.08);">
-        <p style="margin:0 0 8px;color:#64748b;font-size:14px;">${payload.companyName} görev daveti</p>
-        <h1 style="margin:0 0 18px;font-size:24px;line-height:1.25;color:#0f172a;">${payload.task.title}</h1>
-        <p style="margin:0 0 10px;font-size:15px;color:#334155;"><strong>Tarih:</strong> ${timeLabel}</p>
-        ${payload.task.location ? `<p style="margin:0 0 10px;font-size:15px;color:#334155;"><strong>Konum:</strong> ${payload.task.location}</p>` : ""}
-        ${payload.task.description ? `<p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#475569;">${payload.task.description}</p>` : ""}
-        <div style="border:1px solid #dbeafe;background:#eff6ff;border-radius:14px;padding:14px 16px;color:#1e3a8a;font-size:14px;line-height:1.6;">
-          Bu görev ${payload.companyName} CRM üzerinde oluşturuldu. Daveti e-posta veya takvim uygulamandan yanıtlayabilirsin.
+    <div style="font-family:Arial,Helvetica,sans-serif;background:#f3f7fc;padding:30px;color:#0f172a;">
+      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dbe6f3;border-radius:22px;overflow:hidden;box-shadow:0 22px 60px rgba(15,23,42,.10);">
+        <div style="padding:26px 30px 18px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg,#ffffff 0%,#f5f9ff 100%);">
+          ${logoBlock}
+          <p style="margin:18px 0 7px;color:#2563eb;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Görev daveti</p>
+          <h1 style="margin:0;font-size:25px;line-height:1.25;color:#0f172a;font-weight:800;">${recipientTitle}</h1>
+          <p style="margin:8px 0 0;color:#64748b;font-size:14px;line-height:1.5;">${companyName} CRM üzerinden yeni görev atandı.</p>
         </div>
-        <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#94a3b8;">Ekli .ics daveti Apple Calendar, Outlook ve Google Calendar ile uyumludur.</p>
+        <div style="padding:26px 30px 30px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0 10px;margin:0 0 18px;">
+            <tr>
+              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Görev</td>
+              <td style="color:#0f172a;font-size:15px;font-weight:700;">${title}</td>
+            </tr>
+            <tr>
+              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Tarih</td>
+              <td style="color:#0f172a;font-size:15px;font-weight:700;">${timeLabel}</td>
+            </tr>
+            ${payload.task.location ? `
+            <tr>
+              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Konum</td>
+              <td style="color:#334155;font-size:15px;line-height:1.5;">${location}</td>
+            </tr>` : ""}
+            <tr>
+              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Durum</td>
+              <td><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:7px 11px;color:#1d4ed8;font-size:13px;font-weight:700;">Yanıt bekleniyor</span></td>
+            </tr>
+          </table>
+          ${payload.task.description ? `<div style="margin:0 0 20px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:16px 18px;color:#334155;font-size:15px;line-height:1.65;">${description}</div>` : ""}
+          <div style="border:1px solid #dbeafe;background:#f0f7ff;border-radius:16px;padding:15px 17px;color:#1e3a8a;font-size:14px;line-height:1.65;">
+            Bu görev ${companyName} CRM üzerinde oluşturuldu. Daveti e-posta veya takvim uygulamandan yanıtlayabilirsin.
+          </div>
+          <p style="margin:20px 0 0;font-size:12px;line-height:1.6;color:#94a3b8;">
+            Ekli .ics daveti Apple Calendar, Outlook ve Google Calendar ile uyumludur.
+          </p>
+        </div>
       </div>
     </div>
   `;
