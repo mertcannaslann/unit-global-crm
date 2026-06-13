@@ -122,6 +122,17 @@ function inviteFromEmailForClient(client?: OfficeClient) {
   return client?.inviteFromEmail?.trim() || "mrtcnasln@gmail.com";
 }
 
+function calendarLogoUrlForClient(client?: OfficeClient) {
+  if (!client?.logoUrl) return undefined;
+  if (client.logoUrl.startsWith("data:")) {
+    return typeof window === "undefined" ? undefined : new URL("/api/client-logo/unit-global", window.location.origin).toString();
+  }
+  if (client.logoUrl.startsWith("/")) {
+    return typeof window === "undefined" ? client.logoUrl : new URL(client.logoUrl, window.location.origin).toString();
+  }
+  return client.logoUrl;
+}
+
 type CreatedTaskPayload = Omit<Task, "id" | "status">;
 
 type DispatchTaskInviteResult = Partial<Pick<Task, "googleCalendarEventId" | "googleCalendarHtmlLink" | "googleCalendarResponseStatus" | "calendarInviteStatus">>;
@@ -2989,7 +3000,7 @@ function TasksPage({ user }: { user: User }) {
         attendeeName: assignedUser.name,
         companyName,
         organizerEmail,
-        companyLogoUrl: activeClient?.logoUrl,
+        companyLogoUrl: calendarLogoUrlForClient(activeClient),
       });
       updateTask(id, inviteResult);
       if (inviteResult.calendarInviteStatus === "Davet gönderildi") {
@@ -3211,7 +3222,7 @@ function CalendarPage({ user }: { user: User }) {
         attendeeName: assignedUser.name,
         companyName,
         organizerEmail,
-        companyLogoUrl: activeClient?.logoUrl,
+        companyLogoUrl: calendarLogoUrlForClient(activeClient),
       });
       updateTask(id, inviteResult);
       if (inviteResult.calendarInviteStatus === "Davet gönderildi") {
