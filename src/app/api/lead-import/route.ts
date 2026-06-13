@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 export const runtime = "nodejs";
+const MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 type ZipEntry = {
   name: string;
@@ -207,6 +208,10 @@ export async function POST(request: Request) {
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "Dosya bulunamadı." }, { status: 400 });
+    }
+
+    if (file.size > MAX_EXCEL_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "Excel dosyası 10 MB'den küçük olmalı." }, { status: 413 });
     }
 
     const name = file.name.toLowerCase();
