@@ -13,29 +13,68 @@ const loginCredentials = [
 ] as const;
 
 async function bootstrapUserFromEnv(email: string, password: string) {
-  if (process.env.ALLOW_ENV_LOGIN_BOOTSTRAP !== "true") return null;
+  if (process.env.ALLOW_ENV_LOGIN_BOOTSTRAP !== "true") {
+    console.warn("[auth] env bootstrap disabled", { email });
+    return null;
+  }
 
   const credential = loginCredentials.find((item) => item.email === email);
   const user = initialData.users.find((item) => item.email === email);
-  if (!credential?.password || credential.password !== password || !user) return null;
+  if (!credential?.password || credential.password !== password || !user) {
+    console.warn("[auth] env bootstrap rejected", {
+      email,
+      hasCredential: Boolean(credential),
+      hasCredentialPassword: Boolean(credential?.password),
+      hasDemoUser: Boolean(user),
+      passwordMatched: Boolean(credential?.password && credential.password === password),
+    });
+    return null;
+  }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  return prisma.user.upsert({
-    where: { email },
-    create: {
+
+  const existingByEmail = await prisma.user.findUnique({ where: { email } });
+  if (existingByEmail) {
+    console.warn("[auth] env bootstrap updating user by email", { email, userId: existingByEmail.id });
+    return prisma.user.update({
+      where: { email },
+      data: {
+        passwordHash,
+        name: user.name,
+        role: user.role,
+        title: user.title,
+        phone: user.phone,
+        avatarColor: user.avatarColor,
+        active: user.active,
+      },
+    });
+  }
+
+  const existingById = await prisma.user.findUnique({ where: { id: user.id } });
+  if (existingById) {
+    console.warn("[auth] env bootstrap updating user by id", { email, userId: user.id });
+    return prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email,
+        passwordHash,
+        name: user.name,
+        role: user.role,
+        title: user.title,
+        phone: user.phone,
+        avatarColor: user.avatarColor,
+        active: user.active,
+      },
+    });
+  }
+
+  console.warn("[auth] env bootstrap creating user", { email, userId: user.id });
+  return prisma.user.create({
+    data: {
       id: user.id,
       name: user.name,
       email: user.email,
       passwordHash,
-      role: user.role,
-      title: user.title,
-      phone: user.phone,
-      avatarColor: user.avatarColor,
-      active: user.active,
-    },
-    update: {
-      passwordHash,
-      name: user.name,
       role: user.role,
       title: user.title,
       phone: user.phone,
@@ -65,26 +104,57 @@ export const authOptions: AuthOptions = {
         const limit = checkRateLimit(rateLimitKey(request as unknown as Request | undefined, "login", email), { max: 10, windowMs: 15 * 60_000 });
 
         if (!limit.ok || !email || !password) {
+          console.warn("[auth] login rejected before lookup", {
+            email,
+            hasPassword: Boolean(password),
+            rateLimitOk: limit.ok,
+          });
           return null;
         }
 
         let user = await prisma.user.findUnique({ where: { email } });
+        console.warn("[auth] login lookup", {
+          email,
+          foundUser: Boolean(user),
+          hasPasswordHash: Boolean(user?.passwordHash),
+          active: user?.active,
+        });
         if (!user) {
           user = await bootstrapUserFromEnv(email, password);
         }
-        if (!user?.passwordHash || user.active === false) return null;
+        if (!user?.passwordHash || user.active === false) {
+          console.warn("[auth] login rejected after bootstrap", {
+            email,
+            hasUser: Boolean(user),
+            hasPasswordHash: Boolean(user?.passwordHash),
+            active: user?.active,
+          });
+          return null;
+        }
 
         const validPassword = await bcrypt.compare(password, user.passwordHash);
         if (!validPassword) {
           const bootstrappedUser = await bootstrapUserFromEnv(email, password);
-          if (!bootstrappedUser?.passwordHash || bootstrappedUser.active === false) return null;
+          if (!bootstrappedUser?.passwordHash || bootstrappedUser.active === false) {
+            console.warn("[auth] login rejected after password refresh", {
+              email,
+              hasUser: Boolean(bootstrappedUser),
+              hasPasswordHash: Boolean(bootstrappedUser?.passwordHash),
+              active: bootstrappedUser?.active,
+            });
+            return null;
+          }
 
           const validBootstrappedPassword = await bcrypt.compare(password, bootstrappedUser.passwordHash);
-          if (!validBootstrappedPassword) return null;
+          if (!validBootstrappedPassword) {
+            console.warn("[auth] refreshed password still invalid", { email });
+            return null;
+          }
 
           user = bootstrappedUser;
         }
 
+        console.warn("[auth] login accepted", { email, userId: user.id, role: user.role });
         return {
           id: user.id,
           name: user.name,
