@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { initialData } from "@/lib/demo-data";
+import { emptyCrmData } from "@/lib/empty-crm-data";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import { normalizeCrmDataForSecurity, resolveActor } from "@/lib/security";
@@ -17,7 +17,7 @@ type CredentialPayload = {
 
 async function readFullState() {
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
-  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, initialData);
+  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, emptyCrmData);
 }
 
 export async function POST(request: Request) {
