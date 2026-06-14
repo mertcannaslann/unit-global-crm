@@ -2867,6 +2867,12 @@ function LeadPopup({
   }, [lead]);
 
   const daysLeft = daysUntilDate(tenantMoveOut);
+  const setTenantMoveOutAfterDays = (days: number) => {
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + days);
+    setTenantStatus("VAR");
+    setTenantMoveOut(nextDate.toLocaleDateString("en-CA"));
+  };
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
@@ -2927,6 +2933,27 @@ function LeadPopup({
                 <Field label="Çıkış / sözleşme bitiş tarihi">
                   <Input type="date" value={tenantMoveOut} onChange={(event) => setTenantMoveOut(event.target.value)} disabled={tenantStatus === "YOK"} />
                 </Field>
+                <div className="md:col-span-2">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">Hızlı hatırlatma testi</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "7 gün", days: 7 },
+                      { label: "5 gün", days: 5 },
+                      { label: "3 gün", days: 3 },
+                      { label: "Bugün", days: 0 },
+                    ].map((item) => (
+                      <Button
+                        key={item.label}
+                        type="button"
+                        size="sm"
+                        variant={item.days <= 3 ? "danger" : "outline"}
+                        onClick={() => setTenantMoveOutAfterDays(item.days)}
+                      >
+                        {item.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 <div className="rounded-md border border-blue-100 bg-white p-3 text-sm">
                   <p className="font-semibold text-slate-950">Hatırlatma</p>
                   <p className="mt-1 leading-5 text-muted-foreground">Tarih girilirse 7, 5, 3 gün kala ve çıkış günü bildirim oluşur.</p>
