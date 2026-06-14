@@ -152,7 +152,12 @@ export async function POST(request: Request) {
     ...stateWithTask,
     tasks: stateWithTask.tasks.map((task) => (
       task.id === taskId
-        ? { ...task, calendarInviteStatus: "Davet gönderildi", calendarInviteRsvpEnabled: Boolean(result.rsvpEnabled) }
+        ? {
+          ...task,
+          calendarInviteStatus: "Davet gönderildi",
+          calendarInviteRsvpEnabled: Boolean(result.rsvpEnabled),
+          googleCalendarResponseStatus: result.rsvpEnabled ? "needsAction" : undefined,
+        }
         : task
     )),
   });
