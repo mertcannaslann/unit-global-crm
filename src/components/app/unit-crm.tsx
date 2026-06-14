@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -535,6 +535,8 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   const { data, markNotificationRead } = useCrm();
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const taskMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
   const todayLabel = useMemo(() => formatTurkishDate(new Date()), []);
   const titleMap: Record<string, string> = {
     dashboard: "Dashboard",
@@ -554,13 +556,26 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   const tenantNotifications = tenantReminderNotifications(scopedTenantLeads);
   const visibleNotifications = [
     ...tenantNotifications,
-    ...data.notifications.filter((item) => !item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id),
+    ...data.notifications.filter((item) => item.status === "OKUNMADI" && (!item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id)),
   ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const unreadCount = visibleNotifications.filter((item) => item.status === "OKUNMADI").length;
-  const pendingTasks = data.tasks
-    .filter((item) => item.status !== "TAMAMLANDI" && (canSeeOffice(user) || item.assignedToId === user.id || item.createdById === user.id))
+  const actionableTasks = data.tasks
+    .filter((item) => item.status !== "TAMAMLANDI" && new Date(item.dueDate).getTime() <= Date.now() && (canSeeOffice(user) || item.assignedToId === user.id || item.createdById === user.id))
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+  useEffect(() => {
+    function closeMenus(event: MouseEvent) {
+      const target = event.target as Node;
+      if (taskMenuRef.current?.contains(target) || notificationMenuRef.current?.contains(target)) return;
+      setTaskOpen(false);
+      setNotificationOpen(false);
+    }
+
+    if (!taskOpen && !notificationOpen) return;
+    document.addEventListener("mousedown", closeMenus);
+    return () => document.removeEventListener("mousedown", closeMenus);
+  }, [notificationOpen, taskOpen]);
 
   return (
     <header className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -570,17 +585,20 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm shadow-blue-950/[0.03]">Bugün: {todayLabel}</div>
-        <div className="relative">
+        <div className="relative" ref={taskMenuRef}>
           <Button
             className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-3 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
             variant="outline"
-            onClick={() => setTaskOpen((open) => !open)}
+            onClick={() => {
+              setTaskOpen((open) => !open);
+              setNotificationOpen(false);
+            }}
             aria-label="Bekleyen İşler"
           >
             <ClipboardList className="h-4 w-4 stroke-[1.8]" />
-            {pendingTasks.length ? (
+            {actionableTasks.length ? (
               <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
-                {pendingTasks.length}
+                {actionableTasks.length}
               </span>
             ) : null}
           </Button>
@@ -589,14 +607,14 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
               <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-950">Bekleyen İşler</p>
-                  <p className="text-xs text-muted-foreground">{pendingTasks.length} açık</p>
+                  <p className="text-xs text-muted-foreground">{actionableTasks.length} vakti gelen</p>
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => setTaskOpen(false)} aria-label="Bekleyen işleri kapat">
                   <X className="h-4 w-4" />
                 </Button>
               </div>
               <div className="max-h-96 overflow-y-auto">
-                {pendingTasks.slice(0, 8).map((task) => (
+                {actionableTasks.slice(0, 8).map((task) => (
                   <Link key={task.id} href="/gorevler" className="block border-b border-slate-200/70 px-4 py-3 text-left transition hover:bg-[#f7fbff]" onClick={() => setTaskOpen(false)}>
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm font-semibold text-slate-950">{task.title}</p>
@@ -605,20 +623,23 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
                     <p className="mt-1 text-xs text-muted-foreground">{shortDate(task.dueDate)} teslim</p>
                   </Link>
                 ))}
-                {!pendingTasks.length ? (
+                {!actionableTasks.length ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Henüz görev yok
+                    Vakti gelen görev yok
                   </div>
                 ) : null}
               </div>
             </Card>
           ) : null}
         </div>
-        <div className="relative">
+        <div className="relative" ref={notificationMenuRef}>
           <Button
             className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-4 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
             variant="outline"
-            onClick={() => setNotificationOpen((open) => !open)}
+            onClick={() => {
+              setNotificationOpen((open) => !open);
+              setTaskOpen(false);
+            }}
             aria-label="Bildirimler"
           >
             <Bell className="h-4 w-4 stroke-[1.8]" />
