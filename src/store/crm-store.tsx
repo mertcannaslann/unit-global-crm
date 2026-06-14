@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { clients as defaultClients, initialData } from "@/lib/demo-data";
 import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
@@ -53,6 +54,7 @@ function normalizeData(saved: CrmData): CrmData {
 }
 
 export function CrmProvider({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
   const [data, setData] = useState<CrmData>(initialData);
   const [hydrated, setHydrated] = useState(false);
   const dirtyRef = useRef(false);
@@ -66,13 +68,22 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
+    if (status === "loading") return;
+
+    if (status === "unauthenticated") {
+      dirtyRef.current = false;
+      setHydrated(true);
+      return;
+    }
+
     async function loadState() {
       try {
+        setHydrated(false);
         const response = await fetch("/api/crm-state", { cache: "no-store" });
-        if (response.status === 401) return;
+        if (response.status === 401 || response.status === 403) return;
         if (!response.ok) throw new Error("CRM verisi okunamadı");
         const result = (await response.json()) as { data?: CrmData };
-        if (!cancelled && result.data) {
+        if (!cancelled && result.data && !dirtyRef.current) {
           setData(normalizeData(result.data));
         }
       } catch {
@@ -90,10 +101,10 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [status]);
 
   useEffect(() => {
-    if (!hydrated || !dirtyRef.current) return;
+    if (status !== "authenticated" || !hydrated || !dirtyRef.current) return;
     const timeout = window.setTimeout(async () => {
       try {
         const response = await fetch("/api/crm-state", {
@@ -118,7 +129,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [data, hydrated]);
+  }, [data, hydrated, status]);
 
   const value = useMemo<CrmContextValue>(() => ({
     data,
