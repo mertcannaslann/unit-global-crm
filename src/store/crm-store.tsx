@@ -53,6 +53,10 @@ function normalizeData(saved: CrmData): CrmData {
   };
 }
 
+function normalizeListingIdentity(value?: string) {
+  return value?.trim().replace(/\/+$/, "").toLowerCase() ?? "";
+}
+
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
   const [data, setData] = useState<CrmData>(initialData);
@@ -145,6 +149,17 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       if (!hasValidCore) {
         toast.error("Portföy eklemek için başlık, fiyat, m², lokasyon ve oda bilgisi gerekli.");
         return "";
+      }
+      const nextSourceUrl = normalizeListingIdentity(property.sourceUrl || property.listingUrl);
+      const nextExternalId = property.externalId?.trim();
+      const duplicate = data.properties.find((item) => {
+        const sameExternalId = Boolean(nextExternalId && item.externalId === nextExternalId);
+        const sameSourceUrl = Boolean(nextSourceUrl && [item.sourceUrl, item.listingUrl].some((url) => normalizeListingIdentity(url) === nextSourceUrl));
+        return sameExternalId || sameSourceUrl;
+      });
+      if (duplicate) {
+        toast.info("Bu ilan portföylerde zaten var. Mevcut kayıt açılıyor.");
+        return duplicate.id;
       }
       const id = `property-${Date.now()}`;
       commitData((current) => ({
