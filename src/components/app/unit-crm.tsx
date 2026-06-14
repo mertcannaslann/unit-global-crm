@@ -120,8 +120,10 @@ function calendarEmailForUser(user: User) {
   return user.calendarEmail || user.email;
 }
 
+const DEFAULT_INVITE_REPLY_EMAIL = "davet@estafy.com";
+
 function inviteFromEmailForClient(client?: OfficeClient) {
-  return client?.inviteFromEmail?.trim() || "mrtcnasln@gmail.com";
+  return client?.inviteFromEmail?.trim() || DEFAULT_INVITE_REPLY_EMAIL;
 }
 
 function calendarLogoUrlForClient(client?: OfficeClient) {
@@ -910,7 +912,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
   const [officeName, setOfficeName] = useState("Unit Global");
   const [ownerName, setOwnerName] = useState("Dorukhan Öründü");
   const [ownerEmail, setOwnerEmail] = useState("dorukhan@unitglobal.com");
-  const [inviteFromEmail, setInviteFromEmail] = useState(unitClient?.inviteFromEmail ?? "mrtcnasln@gmail.com");
+  const [inviteFromEmail, setInviteFromEmail] = useState(unitClient?.inviteFromEmail ?? DEFAULT_INVITE_REPLY_EMAIL);
   const [consultantCount, setConsultantCount] = useState(1);
   const [clientLogoUrl, setClientLogoUrl] = useState(unitClient?.logoUrl ?? "");
   const officeMemberList = officeUsers(data.users);
@@ -1006,7 +1008,7 @@ function PlatformAdminDashboard({ user }: { user: User }) {
       id: clientId,
       name: officeName || "Yeni Ofis",
       ownerName: ownerName || "Ofis Sahibi",
-      inviteFromEmail: inviteFromEmail.trim() || "mrtcnasln@gmail.com",
+      inviteFromEmail: inviteFromEmail.trim() || DEFAULT_INVITE_REPLY_EMAIL,
       userLimit: OFFICE_USER_LIMIT,
       status: "Hazır",
       logoUrl: clientLogoUrl || undefined,
@@ -3593,7 +3595,7 @@ function TasksPage({ user }: { user: User }) {
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{lead?.name ?? property?.title ?? task.description}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                        {task.googleCalendarResponseStatus && (task.googleCalendarResponseStatus !== "needsAction" || task.calendarInviteRsvpEnabled) ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                        {task.googleCalendarResponseStatus && task.googleCalendarResponseStatus !== "needsAction" ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       </div>
                       {task.calendarInviteRespondedAt ? (
                         <p className="mt-2 text-xs font-medium text-slate-500">Yanıt zamanı: {shortDate(task.calendarInviteRespondedAt)}</p>
@@ -3810,7 +3812,7 @@ function CalendarPage({ user }: { user: User }) {
                     <p className="mt-1 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Danışman"}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                      {task.googleCalendarResponseStatus && (task.googleCalendarResponseStatus !== "needsAction" || task.calendarInviteRsvpEnabled) ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                      {task.googleCalendarResponseStatus && task.googleCalendarResponseStatus !== "needsAction" ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       {task.googleCalendarHtmlLink ? (
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
