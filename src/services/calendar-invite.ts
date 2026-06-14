@@ -144,7 +144,7 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
   const end = new Date(payload.task.endDate ?? defaultEndDate(payload.task.dueDate));
   const timeLabel = `${start.toLocaleDateString("tr-TR")} ${start.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
   const recipientName = payload.attendeeName?.trim() || payload.attendeeEmail;
-  const subject = `${recipientName} | Görev Daveti`;
+  const subject = `Görev Daveti | ${payload.task.title}`;
   const companyName = htmlText(payload.companyName);
   const title = htmlText(payload.task.title);
   const recipientTitle = htmlText(recipientName);
