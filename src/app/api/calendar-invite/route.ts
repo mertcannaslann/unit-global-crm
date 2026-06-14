@@ -25,6 +25,14 @@ async function writeFullState(data: CrmData) {
   });
 }
 
+function publicLogoUrl(logoUrl: string | undefined, request: Request) {
+  if (!logoUrl) return undefined;
+  if (logoUrl.startsWith("data:")) return new URL("/api/client-logo/unit-global", request.url).toString();
+  if (logoUrl.startsWith("/")) return new URL(logoUrl, request.url).toString();
+  if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) return logoUrl;
+  return undefined;
+}
+
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -122,10 +130,17 @@ export async function POST(request: Request) {
     attendeeName: attendeeUser.name || body.attendeeName,
     companyName: client?.name || "Unit CRM",
     organizerEmail,
-    companyLogoUrl: client?.logoUrl,
+    companyLogoUrl: publicLogoUrl(client?.logoUrl, request),
   });
 
   if (!result.sent) {
+    console.error("[calendar-invite] send failed", {
+      taskId,
+      attendeeEmail,
+      actorId: actor.id,
+      companyId: actor.companyId,
+      error: result.error,
+    });
     await writeFullState({
       ...stateWithTask,
       tasks: stateWithTask.tasks.map((task) => (task.id === taskId ? { ...task, calendarInviteStatus: "Davet gönderilemedi" } : task)),
