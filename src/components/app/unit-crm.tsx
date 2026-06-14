@@ -28,6 +28,7 @@ import {
   LogOut,
   MapPin,
   Menu,
+  MessageSquareWarning,
   Plus,
   Plug,
   RefreshCw,
@@ -70,12 +71,13 @@ const navItems = [
   { href: "/ekip", label: "Ekip", icon: Users },
   { href: "/dokumanlar", label: "Dokümanlar", icon: FolderOpen },
   { href: "/entegrasyonlar", label: "Entegrasyonlar", icon: Plug },
+  { href: "/geri-bildirimler", label: "Geri Bildirimler", icon: MessageSquareWarning },
   { href: "/ayarlar", label: "Ayarlar", icon: Settings },
 ];
 
 function navForUser(user: User) {
   if (user.role === "ADMIN") {
-    return navItems.filter((item) => ["/dashboard", "/ayarlar"].includes(item.href));
+    return navItems.filter((item) => ["/dashboard", "/geri-bildirimler", "/ayarlar"].includes(item.href));
   }
   if (user.role === "CONSULTANT") {
     return navItems.filter((item) => !["/ekip", "/entegrasyonlar", "/ayarlar"].includes(item.href));
@@ -547,6 +549,7 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
     ekip: "Ekip",
     dokumanlar: "Dokümanlar",
     entegrasyonlar: "Entegrasyonlar",
+    "geri-bildirimler": "Geri Bildirimler",
     ayarlar: "Ayarlar",
   };
 
@@ -719,12 +722,186 @@ function RouteRenderer({ slug, user }: { slug: string[]; user: User }) {
   if (page === "ekip") return <TeamPage user={user} />;
   if (page === "dokumanlar") return <DocumentsPage user={user} />;
   if (page === "entegrasyonlar") return <IntegrationsPage />;
+  if (page === "geri-bildirimler") return user.role === "ADMIN" ? <FeedbackAdminPage /> : <AccessDenied />;
   if (page === "ayarlar") return <SettingsPage user={user} />;
   return <Dashboard user={user} />;
 }
 
 function AccessDenied() {
   return <Card className="p-8 text-sm text-muted-foreground">Bu sayfa için yetkin yok. Atanmış kayıtların ve görevlerin görünür.</Card>;
+}
+
+type FeedbackReportRow = {
+  id: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  pageUrl: string;
+  userAgent: string;
+  message: string;
+  details?: string | null;
+  priority: string;
+  screenshotUrl?: string | null;
+  errorContext?: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const feedbackPriorityLabels: Record<string, string> = {
+  DUSUK: "Düşük",
+  ORTA: "Orta",
+  ACIL: "Acil",
+};
+
+const feedbackStatusLabels: Record<string, string> = {
+  open: "Açık",
+  in_progress: "İnceleniyor",
+  resolved: "Çözüldü",
+};
+
+function FeedbackAdminPage() {
+  const [reports, setReports] = useState<FeedbackReportRow[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const selected = reports.find((report) => report.id === selectedId) ?? reports[0];
+
+  async function loadReports() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/feedback", { cache: "no-store" });
+      const result = await response.json().catch(() => null) as { reports?: FeedbackReportRow[]; error?: string } | null;
+      if (!response.ok || !result?.reports) throw new Error(result?.error ?? "Geri bildirimler okunamadı.");
+      const nextReports = result.reports;
+      setReports(nextReports);
+      setSelectedId((current) => current ?? nextReports[0]?.id ?? null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Geri bildirimler okunamadı.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateStatus(id: string, status: string) {
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Durum güncellenemedi.");
+      setReports((current) => current.map((report) => (report.id === id ? { ...report, status, updatedAt: new Date().toISOString() } : report)));
+      toast.success("Durum güncellendi");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Durum güncellenemedi.");
+    }
+  }
+
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Geri Bildirimler</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Test kullanıcılarından gelen hata ve geliştirme notları.</p>
+          </div>
+          <Badge label={loading ? "Yükleniyor" : `${reports.length} kayıt`} />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] border-collapse text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Mesaj</th>
+                <th className="px-5 py-3 font-semibold">Kullanıcı</th>
+                <th className="px-5 py-3 font-semibold">Öncelik</th>
+                <th className="px-5 py-3 font-semibold">Durum</th>
+                <th className="px-5 py-3 font-semibold">Tarih</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {reports.map((report) => (
+                <tr
+                  key={report.id}
+                  className={`cursor-pointer bg-white transition hover:bg-slate-50 ${selected?.id === report.id ? "bg-blue-50/60" : ""}`}
+                  onClick={() => setSelectedId(report.id)}
+                >
+                  <td className="max-w-[320px] px-5 py-4">
+                    <p className="truncate font-semibold text-slate-950">{report.message}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{report.pageUrl}</p>
+                  </td>
+                  <td className="px-5 py-4 text-muted-foreground">{report.userEmail ?? "Bilinmiyor"}</td>
+                  <td className="px-5 py-4"><Badge label={feedbackPriorityLabels[report.priority] ?? report.priority} /></td>
+                  <td className="px-5 py-4"><Badge label={feedbackStatusLabels[report.status] ?? report.status} /></td>
+                  <td className="px-5 py-4 text-muted-foreground">{shortDate(report.createdAt)}</td>
+                </tr>
+              ))}
+              {!reports.length && !loading ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Henüz geri bildirim yok.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        {selected ? (
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detay</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-950">{selected.message}</h3>
+              </div>
+              <Select value={selected.status} onChange={(event) => updateStatus(selected.id, event.target.value)}>
+                <option value="open">Açık</option>
+                <option value="in_progress">İnceleniyor</option>
+                <option value="resolved">Çözüldü</option>
+              </Select>
+            </div>
+            <div className="grid gap-3 text-sm">
+              <div className="rounded-lg border border-border bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kullanıcı</p>
+                <p className="mt-1 font-medium text-slate-900">{selected.userEmail ?? "Bilinmiyor"}</p>
+              </div>
+              <div className="rounded-lg border border-border bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sayfa</p>
+                <p className="mt-1 break-words font-medium text-slate-900">{selected.pageUrl}</p>
+              </div>
+              {selected.details ? (
+                <div className="rounded-lg border border-border bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ne yapmaya çalışıyordu?</p>
+                  <p className="mt-1 whitespace-pre-wrap text-slate-900">{selected.details}</p>
+                </div>
+              ) : null}
+              {selected.screenshotUrl ? (
+                <div className="rounded-lg border border-border bg-slate-50 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ekran görüntüsü</p>
+                  <img src={selected.screenshotUrl} alt="Geri bildirim ekran görüntüsü" className="max-h-64 w-full rounded-lg object-contain" />
+                </div>
+              ) : null}
+              {selected.errorContext ? (
+                <details className="rounded-lg border border-border bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">Teknik hata bağlamı</summary>
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-slate-700">{selected.errorContext}</pre>
+                </details>
+              ) : null}
+              <div className="rounded-lg border border-border bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tarayıcı</p>
+                <p className="mt-1 break-words text-xs text-slate-700">{selected.userAgent}</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="py-12 text-center text-sm text-muted-foreground">Bir geri bildirim seç.</div>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 function PlatformAdminDashboard({ user }: { user: User }) {
