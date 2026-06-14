@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { persistAuditEntries, readAuditEntriesForActor } from "@/lib/audit-persistence";
-import { initialData } from "@/lib/demo-data";
+import { emptyCrmData } from "@/lib/empty-crm-data";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import {
@@ -38,7 +38,7 @@ const allowedActions: AuditLogAction[] = [
 
 async function readFullState() {
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
-  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, initialData);
+  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, emptyCrmData);
 }
 
 async function writeFullState(data: CrmData) {
