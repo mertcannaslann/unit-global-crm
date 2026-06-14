@@ -22,6 +22,7 @@ const REQUIRED_SERVER_ENVS = [
   "NEXTAUTH_URL",
   "TASK_RSVP_SECRET",
   "RESEND_API_KEY",
+  "CALENDAR_INVITE_FROM",
 ] as const;
 
 const LEGACY_LOGIN_ENVS = [
@@ -95,6 +96,13 @@ export async function GET() {
         properties: propertyCount,
         leads: leadCount,
         tasks: taskCount,
+      },
+      mail: {
+        provider: "resend",
+        configured: Boolean(process.env.RESEND_API_KEY?.trim() && process.env.CALENDAR_INVITE_FROM?.trim()),
+        fromConfigured: Boolean(process.env.CALENDAR_INVITE_FROM?.trim()),
+        fromDomain: process.env.CALENDAR_INVITE_FROM?.split("@")[1] ?? null,
+        rsvpSecretConfigured: Boolean(process.env.TASK_RSVP_SECRET?.trim()),
       },
       environment: {
         requiredPresent: Object.fromEntries(REQUIRED_SERVER_ENVS.map((key) => [key, Boolean(process.env[key]?.trim())])),
