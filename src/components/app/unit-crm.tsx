@@ -135,7 +135,7 @@ function calendarLogoUrlForClient(client?: OfficeClient) {
 
 type CreatedTaskPayload = Omit<Task, "id" | "status">;
 
-type DispatchTaskInviteResult = Partial<Pick<Task, "googleCalendarEventId" | "googleCalendarHtmlLink" | "googleCalendarResponseStatus" | "calendarInviteStatus">>;
+type DispatchTaskInviteResult = Partial<Pick<Task, "googleCalendarEventId" | "googleCalendarHtmlLink" | "googleCalendarResponseStatus" | "calendarInviteStatus" | "calendarInviteRsvpEnabled">>;
 
 async function dispatchTaskInvite(input: {
   id: string;
@@ -161,11 +161,11 @@ async function dispatchTaskInvite(input: {
   });
   const emailResult = await emailResponse.json().catch(() => ({
     error: "Davet servisi boş yanıt döndürdü.",
-  })) as { sent?: boolean; mode?: "email"; error?: string };
+  })) as { sent?: boolean; mode?: "email"; rsvpEnabled?: boolean; error?: string };
   if (emailResponse.ok && emailResult.sent) {
     return {
       calendarInviteStatus: "Davet gönderildi",
-      googleCalendarResponseStatus: "needsAction",
+      calendarInviteRsvpEnabled: Boolean(emailResult.rsvpEnabled),
     };
   }
 
@@ -3423,7 +3423,7 @@ function TasksPage({ user }: { user: User }) {
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{lead?.name ?? property?.title ?? task.description}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                        {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                        {task.googleCalendarResponseStatus && task.googleCalendarResponseStatus !== "needsAction" ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       </div>
                       {task.calendarInviteRespondedAt ? (
                         <p className="mt-2 text-xs font-medium text-slate-500">Yanıt zamanı: {shortDate(task.calendarInviteRespondedAt)}</p>
@@ -3640,7 +3640,7 @@ function CalendarPage({ user }: { user: User }) {
                     <p className="mt-1 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Danışman"}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                      {task.googleCalendarResponseStatus ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                      {task.googleCalendarResponseStatus && task.googleCalendarResponseStatus !== "needsAction" ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       {task.googleCalendarHtmlLink ? (
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
