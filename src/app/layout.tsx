@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   icons: {
     icon: "/brand/estafy-crm-icon.svg",
     shortcut: "/brand/estafy-crm-icon.svg",
-    apple: "/brand/estafy-apple-icon.png",
+    apple: "/brand/estafy-crm-icon.svg",
   },
 };
 
