@@ -22,6 +22,7 @@ export type EmailCalendarInvitePayload = {
 type SendCalendarInviteResult = {
   sent: boolean;
   mode: "email";
+  rsvpEnabled?: boolean;
   error?: string;
 };
 
@@ -39,6 +40,10 @@ function appBaseUrl() {
 
 function rsvpSecret() {
   return process.env.TASK_RSVP_SECRET || process.env.NEXTAUTH_SECRET || process.env.RESEND_API_KEY || "unit-crm-rsvp-dev";
+}
+
+function rsvpTrackingEnabled() {
+  return Boolean(process.env.TASK_RSVP_SECRET || process.env.NEXTAUTH_SECRET);
 }
 
 export function signTaskRsvp(taskId: string, response: CalendarInviteResponse) {
@@ -178,6 +183,16 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
           <p style="margin:8px 0 0;color:#64748b;font-size:14px;line-height:1.5;">${companyName} CRM üzerinden yeni görev atandı.</p>
         </div>
         <div style="padding:26px 30px 30px;">
+          <div style="margin:0 0 22px;border:1px solid #dbeafe;background:#f8fbff;border-radius:18px;padding:18px 18px 16px;">
+            <p style="margin:0 0 12px;color:#1e3a8a;font-size:14px;font-weight:800;">Davet yanıtı</p>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px 0;">
+              <tr>
+                <td><a href="${htmlText(rsvpLinks[0].url)}" style="display:inline-block;border-radius:999px;background:#16a34a;color:#ffffff;text-decoration:none;padding:12px 18px;font-size:14px;font-weight:800;">${rsvpLinks[0].label}</a></td>
+                <td><a href="${htmlText(rsvpLinks[1].url)}" style="display:inline-block;border-radius:999px;background:#f59e0b;color:#ffffff;text-decoration:none;padding:12px 18px;font-size:14px;font-weight:800;">${rsvpLinks[1].label}</a></td>
+                <td><a href="${htmlText(rsvpLinks[2].url)}" style="display:inline-block;border-radius:999px;background:#ef4444;color:#ffffff;text-decoration:none;padding:12px 18px;font-size:14px;font-weight:800;">${rsvpLinks[2].label}</a></td>
+              </tr>
+            </table>
+          </div>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0 10px;margin:0 0 18px;">
             <tr>
               <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Görev</td>
@@ -194,12 +209,12 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
             </tr>` : ""}
             <tr>
               <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Durum</td>
-              <td><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:7px 11px;color:#1d4ed8;font-size:13px;font-weight:700;">Yanıt bekleniyor</span></td>
+              <td><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:7px 11px;color:#1d4ed8;font-size:13px;font-weight:700;">Davet gönderildi</span></td>
             </tr>
           </table>
           ${payload.task.description ? `<div style="margin:0 0 20px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:16px 18px;color:#334155;font-size:15px;line-height:1.65;">${description}</div>` : ""}
           <div style="margin:0 0 20px;">
-            <p style="margin:0 0 10px;color:#64748b;font-size:13px;font-weight:700;">Yanıtını seç</p>
+            <p style="margin:0 0 10px;color:#64748b;font-size:13px;font-weight:700;">Yanıt linkleri</p>
             <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px 0;">
               <tr>
                 <td><a href="${htmlText(rsvpLinks[0].url)}" style="display:inline-block;border-radius:999px;background:#16a34a;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[0].label}</a></td>
@@ -228,7 +243,7 @@ export async function sendCalendarInviteEmail(payload: EmailCalendarInvitePayloa
   const verifiedFromEmail = process.env.CALENDAR_INVITE_FROM;
 
   if (!resendApiKey || !verifiedFromEmail) {
-    return { sent: false, mode: "email", error: "Mail servisi bağlı değil." };
+    return { sent: false, mode: "email", rsvpEnabled: false, error: "Mail servisi bağlı değil." };
   }
 
   try {
@@ -261,11 +276,11 @@ export async function sendCalendarInviteEmail(payload: EmailCalendarInvitePayloa
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => response.text().catch(() => ""));
-      return { sent: false, mode: "email", error: resendErrorMessage(errorBody) };
+      return { sent: false, mode: "email", rsvpEnabled: false, error: resendErrorMessage(errorBody) };
     }
 
-    return { sent: true, mode: "email" };
+    return { sent: true, mode: "email", rsvpEnabled: rsvpTrackingEnabled() };
   } catch {
-    return { sent: false, mode: "email", error: "Mail servisine ulaşılamadı." };
+    return { sent: false, mode: "email", rsvpEnabled: false, error: "Mail servisine ulaşılamadı." };
   }
 }
