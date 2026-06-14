@@ -43,14 +43,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Kaydedilecek kullanıcı şifresi bulunamadı." }, { status: 400 });
   }
 
-  await Promise.all(users.map(async (user) => {
+  const normalizedUsers = users.map((user) => ({
+    ...user,
+    email: user.email.toLowerCase().trim(),
+  }));
+
+  await Promise.all(normalizedUsers.map(async (user) => {
     const passwordHash = await bcrypt.hash(String(user.password), 12);
     await prisma.user.upsert({
-      where: { email: user.email.toLowerCase().trim() },
+      where: { email: user.email },
       create: {
         id: user.id,
         name: user.name,
-        email: user.email.toLowerCase().trim(),
+        email: user.email,
         passwordHash,
         role: user.role,
         title: user.title,
@@ -70,5 +75,24 @@ export async function POST(request: Request) {
     });
   }));
 
-  return NextResponse.json({ ok: true, saved: users.length });
+  const savedUsers = await prisma.user.findMany({
+    where: { email: { in: normalizedUsers.map((user) => user.email) } },
+    select: { email: true, role: true, active: true, passwordHash: true },
+  });
+  const verifiedCount = savedUsers.filter((user) => Boolean(user.passwordHash)).length;
+
+  if (verifiedCount !== normalizedUsers.length) {
+    return NextResponse.json({ error: "Kullanıcı şifreleri doğrulanamadı.", saved: verifiedCount }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    saved: verifiedCount,
+    users: savedUsers.map((user) => ({
+      email: user.email,
+      role: user.role,
+      active: user.active,
+      hasPassword: Boolean(user.passwordHash),
+    })),
+  });
 }
