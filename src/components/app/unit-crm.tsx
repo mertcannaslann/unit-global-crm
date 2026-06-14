@@ -213,10 +213,6 @@ function workspaceName(user: User, client?: OfficeClient) {
   return user.role === "ADMIN" ? "Estafy CRM" : client?.name ?? "Unit Global";
 }
 
-function workspaceSubtitle(user: User) {
-  return user.role === "ADMIN" ? "Platform Yönetimi" : "Ofis hesabı";
-}
-
 function humanize(value?: string) {
   if (!value) return "-";
   const labels: Record<string, string> = {
@@ -448,13 +444,13 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
           </p>
           {user.role === "ADMIN" ? (
             <p className="text-sm font-semibold text-slate-900">Mertcan Aslan</p>
-          ) : (
-            <div className="flex items-center gap-2.5">
+          ) : client?.logoUrl ? (
+            <div className="flex h-12 items-center justify-center rounded-lg bg-white px-2">
               <ClientLogoMark client={client} fallbackName={name} compact />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{client?.name ?? name}</p>
-                <p className="truncate text-xs text-slate-500">{workspaceSubtitle(user)}</p>
-              </div>
+            </div>
+          ) : (
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900">{client?.name ?? name}</p>
             </div>
           )}
         </div>
@@ -539,6 +535,8 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   const taskMenuRef = useRef<HTMLDivElement>(null);
   const notificationMenuRef = useRef<HTMLDivElement>(null);
   const todayLabel = useMemo(() => formatTurkishDate(new Date()), []);
+  const now = Date.now();
+  const upcomingTaskLimit = now + 60 * 60 * 1000;
   const titleMap: Record<string, string> = {
     dashboard: "Dashboard",
     portfoyler: "Portföyler",
@@ -555,14 +553,17 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
   const title = titleMap[slug[0]] ?? "Dashboard";
   const scopedTenantLeads = data.leads.filter((lead) => canSeeOffice(user) || lead.consultantId === user.id);
   const tenantNotifications = tenantReminderNotifications(scopedTenantLeads);
-  const visibleNotifications = [
-    ...tenantNotifications,
-    ...data.notifications.filter((item) => item.status === "OKUNMADI" && (!item.targetUserId || canSeeOffice(user) || item.targetUserId === user.id)),
-  ]
+  const visibleNotifications = tenantNotifications
+    .filter((item) => item.status === "OKUNMADI")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const unreadCount = visibleNotifications.filter((item) => item.status === "OKUNMADI").length;
   const actionableTasks = data.tasks
-    .filter((item) => item.status !== "TAMAMLANDI" && new Date(item.dueDate).getTime() <= Date.now() && (canSeeOffice(user) || item.assignedToId === user.id || item.createdById === user.id))
+    .filter((item) => {
+      const dueAt = new Date(item.dueDate).getTime();
+      return item.status !== "TAMAMLANDI"
+        && dueAt <= upcomingTaskLimit
+        && (canSeeOffice(user) || item.assignedToId === user.id || item.createdById === user.id);
+    })
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   useEffect(() => {
@@ -586,6 +587,7 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm shadow-blue-950/[0.03]">Bugün: {todayLabel}</div>
+        {actionableTasks.length ? (
         <div className="relative" ref={taskMenuRef}>
           <Button
             className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-3 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
@@ -597,18 +599,16 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
             aria-label="Bekleyen İşler"
           >
             <ClipboardList className="h-4 w-4 stroke-[1.8]" />
-            {actionableTasks.length ? (
-              <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
-                {actionableTasks.length}
-              </span>
-            ) : null}
+            <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
+              {actionableTasks.length}
+            </span>
           </Button>
           {taskOpen ? (
             <Card className="absolute right-0 top-12 z-50 w-[min(92vw,360px)] overflow-hidden rounded-2xl border-slate-200/80 shadow-xl shadow-blue-950/10">
               <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-950">Bekleyen İşler</p>
-                  <p className="text-xs text-muted-foreground">{actionableTasks.length} vakti gelen</p>
+                  <p className="text-xs text-muted-foreground">{actionableTasks.length} zamanı gelen / yaklaşan iş</p>
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => setTaskOpen(false)} aria-label="Bekleyen işleri kapat">
                   <X className="h-4 w-4" />
@@ -624,15 +624,12 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
                     <p className="mt-1 text-xs text-muted-foreground">{shortDate(task.dueDate)} teslim</p>
                   </Link>
                 ))}
-                {!actionableTasks.length ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Vakti gelen görev yok
-                  </div>
-                ) : null}
               </div>
             </Card>
           ) : null}
         </div>
+        ) : null}
+        {unreadCount ? (
         <div className="relative" ref={notificationMenuRef}>
           <Button
             className="relative h-11 rounded-xl border-slate-200/80 bg-white/90 px-4 text-slate-700 shadow-sm shadow-blue-950/[0.03] hover:bg-[#f3f8ff] hover:text-primary"
@@ -645,18 +642,16 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
           >
             <Bell className="h-4 w-4 stroke-[1.8]" />
             Bildirimler
-            {unreadCount ? (
-              <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
-                {unreadCount}
-              </span>
-            ) : null}
+            <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-white">
+              {unreadCount}
+            </span>
           </Button>
           {notificationOpen ? (
             <Card className="absolute right-0 top-12 z-50 w-[min(92vw,380px)] overflow-hidden rounded-2xl border-slate-200/80 shadow-xl shadow-blue-950/10">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-950">Bildirimler</p>
-                  <p className="text-xs text-muted-foreground">{unreadCount ? `${unreadCount} okunmamış bildirim` : "Yeni bildirim yok"}</p>
+                  <p className="text-xs text-muted-foreground">{unreadCount} zamanı gelen bildirim</p>
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => setNotificationOpen(false)} aria-label="Bildirimleri kapat">
                   <X className="h-4 w-4" />
@@ -675,6 +670,7 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
                       }`}
                       onClick={() => {
                         if (!isTenantReminder) markNotificationRead(notification.id);
+                        setNotificationOpen(false);
                       }}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -695,15 +691,11 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
                     </button>
                   );
                 })}
-                {!visibleNotifications.length ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Henüz bildirim yok. Yeni görev, lead veya portföy aksiyonu geldiğinde burada görünecek.
-                  </div>
-                ) : null}
               </div>
             </Card>
           ) : null}
         </div>
+        ) : null}
       </div>
     </header>
   );
