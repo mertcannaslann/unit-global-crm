@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     leadId: body.task.leadId,
     propertyId: body.task.propertyId,
     calendarInviteStatus: "Davet gönderiliyor",
-    googleCalendarResponseStatus: "needsAction",
+    calendarInviteRsvpEnabled: false,
   };
 
   const stateWithTask: CrmData = {
@@ -150,7 +150,11 @@ export async function POST(request: Request) {
 
   await writeFullState({
     ...stateWithTask,
-    tasks: stateWithTask.tasks.map((task) => (task.id === taskId ? { ...task, calendarInviteStatus: "Davet gönderildi" } : task)),
+    tasks: stateWithTask.tasks.map((task) => (
+      task.id === taskId
+        ? { ...task, calendarInviteStatus: "Davet gönderildi", calendarInviteRsvpEnabled: Boolean(result.rsvpEnabled) }
+        : task
+    )),
   });
 
   return NextResponse.json({ ...result, taskId });
