@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-import { initialData } from "@/lib/demo-data";
+import { emptyCrmData } from "@/lib/empty-crm-data";
 import { normalizeCrmDataForSecurity, resolveActor, userIdsForCompany } from "@/lib/security";
 import type { CrmData } from "@/lib/types";
 import { insertCalendarEvent, refreshGoogleAccessToken, type CalendarTaskPayload } from "@/services/google-calendar";
@@ -34,7 +34,7 @@ async function usableConnection(userEmail: string) {
 
 async function readFullState() {
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
-  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, initialData);
+  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, emptyCrmData);
 }
 
 export async function POST(request: Request) {
