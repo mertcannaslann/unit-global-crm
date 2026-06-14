@@ -59,7 +59,7 @@ export const clients: OfficeClient[] = [
     id: "client-unit-global",
     name: "Unit Global",
     ownerName: "Dorukhan Öründü",
-    inviteFromEmail: "mrtcnasln@gmail.com",
+    inviteFromEmail: "info@unitglobal.com",
     userLimit: 5,
     status: "Hazır",
     logoUrl: UNIT_GLOBAL_LOGO_DATA_URL,
