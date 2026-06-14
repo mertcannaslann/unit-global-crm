@@ -4030,14 +4030,7 @@ const integrationFormConfigs: IntegrationFormConfig[] = [
 function IntegrationsPage() {
   const { data } = useCrm();
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("unit-crm-integration-drafts");
-      if (saved) setDrafts(JSON.parse(saved));
-    } catch {
-      window.localStorage.removeItem("unit-crm-integration-drafts");
-    }
-  }, []);
+  const [savedIntegrations, setSavedIntegrations] = useState<Record<string, boolean>>({});
   const updateDraft = (integrationKey: string, fieldId: string, value: string) => {
     setDrafts((current) => ({
       ...current,
@@ -4048,11 +4041,13 @@ function IntegrationsPage() {
     }));
   };
   const saveIntegration = (integrationKey: string, integrationName: string) => {
-    const next = { ...drafts };
-    window.localStorage.setItem("unit-crm-integration-drafts", JSON.stringify(next));
-    toast.success(`${integrationName} erişim bilgileri kaydedildi`);
+    setSavedIntegrations((current) => ({ ...current, [integrationKey]: true }));
+    setDrafts((current) => ({ ...current, [integrationKey]: {} }));
+    toast.success(`${integrationName} bağlantı talebi alındı. Gizli anahtarlar tarayıcıda saklanmaz.`);
   };
-  const hasAnyValue = (integrationKey: string) => Object.values(drafts[integrationKey] ?? {}).some((value) => value.trim().length > 0);
+  const hasAnyValue = (integrationKey: string) => (
+    savedIntegrations[integrationKey] || Object.values(drafts[integrationKey] ?? {}).some((value) => value.trim().length > 0)
+  );
 
   return (
     <div className="space-y-5">
