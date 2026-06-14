@@ -141,7 +141,13 @@ export async function PUT(request: Request) {
 
     const merged = mergeAuthorizedCrmState(fullState, incomingState, actor, request);
     const auditedData = appendAuditLogs(merged.data, merged.auditEntries);
-    await persistAuditEntries(merged.auditEntries);
+    let auditWriteFailed = false;
+    try {
+      await persistAuditEntries(merged.auditEntries);
+    } catch (auditError) {
+      auditWriteFailed = true;
+      console.error("[crm-state] SAVE audit yazımı başarısız", auditError);
+    }
     await writeFullState(auditedData);
     const visibleState = visibleDataForActor(auditedData, actor);
     visibleState.auditLogs = await readAuditEntriesForActor(actor);
@@ -151,8 +157,9 @@ export async function PUT(request: Request) {
       role: actor.role,
       saved: stateStats(auditedData),
       visible: stateStats(visibleState),
+      auditWriteFailed,
     });
-    return NextResponse.json({ ok: true, data: visibleState, meta: { stats: stateStats(visibleState) } });
+    return NextResponse.json({ ok: true, data: visibleState, meta: { stats: stateStats(visibleState), auditWriteFailed } });
   } catch (error) {
     if (error instanceof ForbiddenError) {
       const auditEntry = (error as ForbiddenError & { auditEntry?: ReturnType<typeof createAuditLogEntry> }).auditEntry
