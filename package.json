@@ -8,11 +8,13 @@
     "start": "next start",
     "lint": "next lint",
     "test:security": "node --import tsx/esm src/lib/security.test.ts",
+    "predeploy:check": "npm run lint && npm run test:security && npm run build && npm audit --audit-level=high",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed:demo": "tsx prisma/seed.ts",
+    "setup:admin": "tsx scripts/create-initial-admin.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.0",
@@ -48,8 +50,5 @@
     "tailwindcss": "^4.1.8",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   }
 }
