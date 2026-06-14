@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { emptyCrmData } from "@/lib/empty-crm-data";
 import { prisma } from "@/lib/prisma";
@@ -23,7 +22,7 @@ function htmlText(value: string) {
     .replace(/"/g, "&quot;");
 }
 
-function responsePage(title: string, message: string, status = 200) {
+function responsePage(title: string, message: string, status = 200, body = "") {
   const safeTitle = htmlText(title);
   const safeMessage = htmlText(message);
   return new Response(`<!doctype html>
@@ -37,12 +36,15 @@ function responsePage(title: string, message: string, status = 200) {
           main{max-width:520px;background:white;border:1px solid #dbe6f3;border-radius:24px;box-shadow:0 24px 70px rgba(15,23,42,.12);padding:34px}
           p{color:#64748b;line-height:1.6}
           a{color:#1d4ed8;font-weight:700;text-decoration:none}
+          button{border:0;border-radius:999px;background:#1d4ed8;color:white;font-weight:800;font-size:15px;padding:13px 18px;cursor:pointer}
+          .secondary{display:inline-block;margin-left:12px;color:#64748b;font-weight:700}
         </style>
       </head>
       <body>
         <main>
           <h1>${safeTitle}</h1>
           <p>${safeMessage}</p>
+          ${body}
           <p><a href="/">CRM'e dön</a></p>
         </main>
       </body>
@@ -52,21 +54,23 @@ function responsePage(title: string, message: string, status = 200) {
   });
 }
 
-export async function GET(request: Request) {
-  const limit = checkRateLimit(rateLimitKey(request, "task-rsvp"), { max: 30, windowMs: 60_000 });
-  if (!limit.ok) {
-    return responsePage("Çok fazla deneme", "Bu davet linki kısa süre içinde çok fazla denendi.", 429);
-  }
+function confirmationPage(taskId: string, response: CalendarInviteResponse, token: string) {
+  const label = responseLabels[response];
+  return responsePage(
+    "Yanıtını onayla",
+    `Bu görev davetine "${label}" yanıtı vermek üzeresin. Onayladığında CRM'deki görev durumu güncellenecek.`,
+    200,
+    `<form method="post" action="/api/task-rsvp">
+      <input type="hidden" name="taskId" value="${htmlText(taskId)}" />
+      <input type="hidden" name="response" value="${htmlText(response)}" />
+      <input type="hidden" name="token" value="${htmlText(token)}" />
+      <button type="submit">${htmlText(label)} olarak kaydet</button>
+      <a class="secondary" href="/">Vazgeç</a>
+    </form>`,
+  );
+}
 
-  const url = new URL(request.url);
-  const taskId = url.searchParams.get("taskId") ?? "";
-  const response = url.searchParams.get("response") as CalendarInviteResponse | null;
-  const token = url.searchParams.get("token") ?? "";
-
-  if (!taskId || !response || !allowedResponses.has(response) || !verifyTaskRsvp(taskId, response, token)) {
-    return responsePage("Yanıt doğrulanamadı", "Bu davet linki geçersiz veya süresi dolmuş olabilir.", 400);
-  }
-
+async function saveTaskResponse(taskId: string, response: CalendarInviteResponse) {
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
   const currentData = (state?.data as CrmData | null) ?? emptyCrmData;
   let taskTitle = "";
@@ -86,7 +90,7 @@ export async function GET(request: Request) {
   };
 
   if (!taskTitle) {
-    return responsePage("Görev bulunamadı", "Bu davete bağlı görev CRM içinde bulunamadı.", 404);
+    return { ok: false, status: 404, title: "", message: "Bu davete bağlı görev CRM içinde bulunamadı." };
   }
 
   await prisma.crmState.upsert({
@@ -95,9 +99,51 @@ export async function GET(request: Request) {
     update: { data: nextData as unknown as Prisma.InputJsonValue },
   });
 
-  return responsePage("Yanıt kaydedildi", `${taskTitle} görevi için yanıtın CRM'e ${responseLabels[response]} olarak işlendi.`);
+  return {
+    ok: true,
+    status: 200,
+    title: taskTitle,
+    message: `${taskTitle} görevi için yanıtın CRM'e ${responseLabels[response]} olarak işlendi.`,
+  };
 }
 
-export async function POST() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+export async function GET(request: Request) {
+  const limit = checkRateLimit(rateLimitKey(request, "task-rsvp"), { max: 30, windowMs: 60_000 });
+  if (!limit.ok) {
+    return responsePage("Çok fazla deneme", "Bu davet linki kısa süre içinde çok fazla denendi.", 429);
+  }
+
+  const url = new URL(request.url);
+  const taskId = url.searchParams.get("taskId") ?? "";
+  const response = url.searchParams.get("response") as CalendarInviteResponse | null;
+  const token = url.searchParams.get("token") ?? "";
+
+  if (!taskId || !response || !allowedResponses.has(response) || !verifyTaskRsvp(taskId, response, token)) {
+    return responsePage("Yanıt doğrulanamadı", "Bu davet linki geçersiz veya süresi dolmuş olabilir.", 400);
+  }
+
+  return confirmationPage(taskId, response, token);
+}
+
+export async function POST(request: Request) {
+  const limit = checkRateLimit(rateLimitKey(request, "task-rsvp"), { max: 30, windowMs: 60_000 });
+  if (!limit.ok) {
+    return responsePage("Çok fazla deneme", "Bu davet linki kısa süre içinde çok fazla denendi.", 429);
+  }
+
+  const formData = await request.formData();
+  const taskId = String(formData.get("taskId") ?? "");
+  const response = String(formData.get("response") ?? "") as CalendarInviteResponse;
+  const token = String(formData.get("token") ?? "");
+
+  if (!taskId || !allowedResponses.has(response) || !verifyTaskRsvp(taskId, response, token)) {
+    return responsePage("Yanıt doğrulanamadı", "Bu davet linki geçersiz veya süresi dolmuş olabilir.", 400);
+  }
+
+  const result = await saveTaskResponse(taskId, response);
+  if (!result.ok) {
+    return responsePage("Görev bulunamadı", result.message, result.status);
+  }
+
+  return responsePage("Yanıt kaydedildi", result.message);
 }
