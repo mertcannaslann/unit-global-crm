@@ -128,7 +128,7 @@ export async function POST(request: Request) {
     task: { ...persistedTask, id: taskId },
     attendeeEmail,
     attendeeName: attendeeUser.name || body.attendeeName,
-    companyName: client?.name || "Unit CRM",
+    companyName: client?.name || "Estafy CRM",
     organizerEmail,
     companyLogoUrl: publicLogoUrl(client?.logoUrl, request),
   });
