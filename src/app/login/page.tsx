@@ -77,7 +77,7 @@ export default function LoginPage() {
 
         <section className="p-8 md:p-12">
           <div className="mb-8">
-            <Image src="/brand/estafy-wordmark.png" alt="Estafy" width={168} height={22} priority className="mb-8 h-6 w-auto object-contain" />
+            <Image src="/brand/estafy-wordmark.svg" alt="Estafy" width={168} height={22} priority className="mb-8 h-6 w-auto object-contain" />
             <p className="text-sm font-medium text-primary">Güvenli giriş</p>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">Estafy CRM’e giriş yap</h2>
           </div>
