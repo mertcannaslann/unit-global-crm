@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { initialData } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import { normalizeCrmDataForSecurity, resolveActor, userIdsForCompany } from "@/lib/security";
-import type { CrmData } from "@/lib/types";
+import type { CrmData, Task } from "@/lib/types";
 import { sendCalendarInviteEmail } from "@/services/calendar-invite";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -14,6 +15,14 @@ const CRM_STATE_ID = "primary";
 async function readFullState() {
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
   return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, initialData);
+}
+
+async function writeFullState(data: CrmData) {
+  return prisma.crmState.upsert({
+    where: { id: CRM_STATE_ID },
+    create: { id: CRM_STATE_ID, data: data as unknown as Prisma.InputJsonValue },
+    update: { data: data as unknown as Prisma.InputJsonValue },
+  });
 }
 
 export async function POST(request: Request) {
@@ -28,8 +37,8 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json() as {
-    task?: {
-      id: string;
+    task?: Partial<Task> & {
+      id?: string;
       title: string;
       description?: string;
       dueDate: string;
@@ -58,6 +67,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Davet için görev ve danışman e-postası gerekli." }, { status: 400 });
   }
 
+  const taskId = body.task.id || `task-${Date.now()}`;
+
   if (!attendeeUser) {
     return NextResponse.json({ error: "Danışman kullanıcı bulunamadı." }, { status: 403 });
   }
@@ -78,8 +89,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Davet gönderen e-postası geçerli değil." }, { status: 400 });
   }
 
+  const persistedTask: Task = {
+    id: taskId,
+    title: body.task.title,
+    description: body.task.description ?? "Görevler sayfasından oluşturuldu.",
+    type: body.task.type ?? "RANDEVU",
+    dueDate: body.task.dueDate,
+    endDate: body.task.endDate,
+    location: body.task.location ?? "",
+    reminderMinutes: body.task.reminderMinutes ?? 30,
+    priority: body.task.priority ?? "ORTA",
+    status: body.task.status ?? "ACIK",
+    assignedToId: attendeeUser.id,
+    createdById: actor.id,
+    leadId: body.task.leadId,
+    propertyId: body.task.propertyId,
+    calendarInviteStatus: "Davet gönderiliyor",
+    googleCalendarResponseStatus: "needsAction",
+  };
+
+  const stateWithTask: CrmData = {
+    ...fullState,
+    tasks: fullState.tasks.some((task) => task.id === taskId)
+      ? fullState.tasks.map((task) => (task.id === taskId ? { ...task, ...persistedTask } : task))
+      : [persistedTask, ...fullState.tasks],
+  };
+  await writeFullState(stateWithTask);
+
   const result = await sendCalendarInviteEmail({
-    task: body.task,
+    task: { ...persistedTask, id: taskId },
     attendeeEmail,
     attendeeName: attendeeUser.name || body.attendeeName,
     companyName: client?.name || "Unit CRM",
@@ -88,8 +126,17 @@ export async function POST(request: Request) {
   });
 
   if (!result.sent) {
+    await writeFullState({
+      ...stateWithTask,
+      tasks: stateWithTask.tasks.map((task) => (task.id === taskId ? { ...task, calendarInviteStatus: "Davet gönderilemedi" } : task)),
+    });
     return NextResponse.json(result, { status: 503 });
   }
 
-  return NextResponse.json(result);
+  await writeFullState({
+    ...stateWithTask,
+    tasks: stateWithTask.tasks.map((task) => (task.id === taskId ? { ...task, calendarInviteStatus: "Davet gönderildi" } : task)),
+  });
+
+  return NextResponse.json({ ...result, taskId });
 }
