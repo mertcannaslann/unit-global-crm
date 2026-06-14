@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Building2, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -44,23 +45,41 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="luxury-grid flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-xl border border-border bg-white shadow-[0_24px_80px_rgba(18,58,111,0.12)] md:grid-cols-[1.05fr_0.95fr]">
-        <section className="bg-gradient-to-br from-[#061f41] via-[#0f4c91] to-[#4da3ff] p-8 text-white md:p-12">
-          <div className="mb-16 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
-            <Building2 className="h-6 w-6" />
+    <main className="luxury-grid flex min-h-screen items-center justify-center bg-[#f7f9fc] px-4 py-10">
+      <div className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.12)] md:grid-cols-[1.04fr_0.96fr]">
+        <section className="relative overflow-hidden bg-[radial-gradient(circle_at_20%_0%,rgba(29,117,255,0.26),transparent_32%),linear-gradient(145deg,#071328_0%,#0b1730_48%,#0f4c91_100%)] p-8 text-white md:p-12">
+          <div className="absolute -right-28 -top-28 h-64 w-64 rounded-full bg-blue-400/20 blur-3xl" />
+          <div className="relative mb-16 flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15 shadow-2xl shadow-blue-950/30">
+              <Image src="/brand/estafy-crm-icon.svg" alt="Estafy CRM ikonu" width={44} height={44} priority />
+            </div>
+            <div>
+              <p className="text-xl font-semibold uppercase tracking-[0.22em] text-white">Estafy</p>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-200">CRM</p>
+            </div>
           </div>
-          <p className="mb-3 text-sm font-medium uppercase tracking-[0.18em] text-blue-100">Emlak Ofisi CRM</p>
-          <h1 className="max-w-md text-4xl font-semibold leading-tight md:text-5xl">Real Estate Operating System</h1>
-          <p className="mt-5 max-w-md text-sm leading-6 text-blue-100">
-            Farklı emlak ofislerine hesap aç, kullanıcı limitini belirle, owner ve danışman operasyonlarını tek panelden güvenli şekilde yönet.
+          <p className="relative mb-3 text-sm font-medium uppercase tracking-[0.18em] text-blue-100">Estafy CRM</p>
+          <h1 className="relative max-w-md text-4xl font-semibold leading-tight md:text-5xl">Emlak ofisleri için premium operasyon paneli</h1>
+          <p className="relative mt-5 max-w-md text-sm leading-6 text-blue-100">
+            Ofis, portföy, müşteri, görev ve takvim akışlarını tek güvenli çalışma alanında yönet.
           </p>
+          <div className="relative mt-10 grid max-w-md gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+              <ShieldCheck className="h-5 w-5 text-blue-200" />
+              <p className="mt-3 text-sm font-semibold">Yetkili erişim</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+              <Sparkles className="h-5 w-5 text-blue-200" />
+              <p className="mt-3 text-sm font-semibold">Modern ofis deneyimi</p>
+            </div>
+          </div>
         </section>
 
         <section className="p-8 md:p-12">
           <div className="mb-8">
+            <Image src="/brand/estafy-wordmark.png" alt="Estafy" width={168} height={22} priority className="mb-8 h-6 w-auto object-contain" />
             <p className="text-sm font-medium text-primary">Güvenli giriş</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Operasyon paneline giriş yap</h2>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Estafy CRM’e giriş yap</h2>
           </div>
           <form className="space-y-5" onSubmit={handleSubmit}>
             <label className="block space-y-2">
