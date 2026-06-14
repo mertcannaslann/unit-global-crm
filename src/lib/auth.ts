@@ -95,7 +95,7 @@ export const authOptions: AuthOptions = {
   },
   providers: [
     CredentialsProvider({
-      name: "Emlak Ofisi CRM Login",
+      name: "Estafy CRM Login",
       credentials: {
         email: { label: "E-posta", type: "email" },
         password: { label: "Şifre", type: "password" },
