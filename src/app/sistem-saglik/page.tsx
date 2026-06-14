@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type { CrmData } from "@/lib/types";
 
 const CRM_STATE_ID = "primary";
 
@@ -72,6 +73,10 @@ export default async function SystemHealthPage() {
       connected: true;
       crmStateExists: boolean;
       crmStateUpdatedAt: Date | null;
+      stateProperties: number;
+      stateLeads: number;
+      stateTasks: number;
+      stateUsers: number;
       userCount: number;
       activeUserCount: number;
       usersWithPasswordHash: number;
@@ -83,7 +88,7 @@ export default async function SystemHealthPage() {
 
   try {
     const [crmState, userCount, activeUserCount, usersWithPasswordHash, properties, leads, tasks] = await Promise.all([
-      prisma.crmState.findUnique({ where: { id: CRM_STATE_ID }, select: { updatedAt: true } }),
+      prisma.crmState.findUnique({ where: { id: CRM_STATE_ID }, select: { data: true, updatedAt: true } }),
       prisma.user.count(),
       prisma.user.count({ where: { active: true } }),
       prisma.user.count({ where: { passwordHash: { not: null } } }),
@@ -91,11 +96,16 @@ export default async function SystemHealthPage() {
       prisma.lead.count(),
       prisma.task.count(),
     ]);
+    const stateData = crmState?.data as Partial<CrmData> | null | undefined;
 
     result = {
       connected: true,
       crmStateExists: Boolean(crmState),
       crmStateUpdatedAt: crmState?.updatedAt ?? null,
+      stateProperties: Array.isArray(stateData?.properties) ? stateData.properties.length : 0,
+      stateLeads: Array.isArray(stateData?.leads) ? stateData.leads.length : 0,
+      stateTasks: Array.isArray(stateData?.tasks) ? stateData.tasks.length : 0,
+      stateUsers: Array.isArray(stateData?.users) ? stateData.users.length : 0,
       userCount,
       activeUserCount,
       usersWithPasswordHash,
@@ -115,9 +125,13 @@ export default async function SystemHealthPage() {
     ["CRM state", result.connected && result.crmStateExists ? "Var" : "Eksik"],
     ["Hash'li kullanıcı", result.connected ? `${result.usersWithPasswordHash}/${result.userCount}` : "-"],
     ["Aktif kullanıcı", result.connected ? String(result.activeUserCount) : "-"],
-    ["Portföy", result.connected ? String(result.properties) : "-"],
-    ["Müşteri / lead", result.connected ? String(result.leads) : "-"],
-    ["Görev", result.connected ? String(result.tasks) : "-"],
+    ["CRM state kullanıcı", result.connected ? String(result.stateUsers) : "-"],
+    ["CRM state portföy", result.connected ? String(result.stateProperties) : "-"],
+    ["CRM state müşteri / lead", result.connected ? String(result.stateLeads) : "-"],
+    ["CRM state görev", result.connected ? String(result.stateTasks) : "-"],
+    ["Gerçek tablo portföy", result.connected ? String(result.properties) : "-"],
+    ["Gerçek tablo müşteri / lead", result.connected ? String(result.leads) : "-"],
+    ["Gerçek tablo görev", result.connected ? String(result.tasks) : "-"],
   ];
 
   return (
