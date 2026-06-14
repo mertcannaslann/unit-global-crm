@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -208,11 +209,11 @@ function clientForUser(data: CrmData, user: User) {
 }
 
 function workspaceName(user: User, client?: OfficeClient) {
-  return user.role === "ADMIN" ? "Unit CRM" : client?.name ?? "Unit Global";
+  return user.role === "ADMIN" ? "Estafy CRM" : client?.name ?? "Unit Global";
 }
 
 function workspaceSubtitle(user: User) {
-  return user.role === "ADMIN" ? "Platform Yönetimi" : "Office CRM";
+  return user.role === "ADMIN" ? "Platform Yönetimi" : "Ofis hesabı";
 }
 
 function humanize(value?: string) {
@@ -367,7 +368,7 @@ export function CrmApp({ slug }: CrmAppProps) {
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-foreground">
-      <MobileTopbar onMenu={() => setSidebarOpen(true)} user={user} client={activeClient} />
+      <MobileTopbar onMenu={() => setSidebarOpen(true)} user={user} />
       <div className="flex min-h-screen w-full">
         <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 border-r border-slate-200/70 bg-white/85 px-4 py-5 backdrop-blur-xl lg:block">
           <Sidebar user={user} client={activeClient} currentPath={currentPath} nav={visibleNav} />
@@ -408,23 +409,19 @@ function LoadingScreen() {
     <main className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex items-center gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm text-muted-foreground">
         <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-        CRM yükleniyor
+        Estafy CRM yükleniyor
       </div>
     </main>
   );
 }
 
-function MobileTopbar({ onMenu, user, client }: { onMenu: () => void; user: User; client?: OfficeClient }) {
-  const name = workspaceName(user, client);
+function MobileTopbar({ onMenu, user }: { onMenu: () => void; user: User }) {
   return (
     <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200/70 bg-white/90 px-4 py-3 backdrop-blur-xl lg:hidden">
       <Button variant="ghost" size="icon" onClick={onMenu}>
         <Menu className="h-5 w-5" />
       </Button>
-      <div className="flex items-center gap-2 text-sm font-semibold">
-        <ClientLogoMark client={client} fallbackName={name} compact />
-        {!client?.logoUrl ? name : null}
-      </div>
+      <ProductBrandMark compact />
       <Avatar user={user} />
     </div>
   );
@@ -442,11 +439,23 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
 
   return (
     <div className="flex h-full flex-col">
-      <div className={`mb-8 px-2 ${client?.logoUrl ? "space-y-2" : "flex items-center gap-3"}`}>
-        <ClientLogoMark client={client} fallbackName={name} />
-        <div>
-          {!client?.logoUrl ? <p className="text-base font-semibold">{name}</p> : null}
-          <p className="text-xs font-medium text-slate-500">{workspaceSubtitle(user)}</p>
+      <div className="mb-7 px-2">
+        <ProductBrandMark />
+        <div className="mt-5 rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm shadow-blue-950/[0.03]">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            {user.role === "ADMIN" ? "Platform" : "Aktif ofis"}
+          </p>
+          {user.role === "ADMIN" ? (
+            <p className="text-sm font-semibold text-slate-900">Mertcan Aslan</p>
+          ) : (
+            <div className="flex items-center gap-3">
+              <ClientLogoMark client={client} fallbackName={name} compact />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{client?.name ?? name}</p>
+                <p className="truncate text-xs text-slate-500">{workspaceSubtitle(user)}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -489,6 +498,20 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
 
 function Avatar({ user }: { user: User }) {
   return <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${user.avatarColor} text-xs font-semibold text-white shadow-sm shadow-blue-950/10`}>{initials(user.name)}</div>;
+}
+
+function ProductBrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`flex items-center ${compact ? "gap-2" : "gap-3"}`}>
+      <div className={`flex shrink-0 items-center justify-center rounded-2xl bg-slate-950 shadow-sm shadow-blue-950/10 ${compact ? "h-9 w-9" : "h-11 w-11"}`}>
+        <Image src="/brand/estafy-crm-icon.svg" alt="Estafy CRM ikonu" width={compact ? 30 : 36} height={compact ? 30 : 36} priority />
+      </div>
+      <div className="min-w-0">
+        <p className={`font-semibold uppercase tracking-[0.18em] text-slate-950 ${compact ? "text-sm" : "text-base"}`}>Estafy</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">CRM</p>
+      </div>
+    </div>
+  );
 }
 
 function ClientLogoMark({ client, fallbackName, compact = false }: { client?: OfficeClient; fallbackName: string; compact?: boolean }) {
