@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { persistAuditEntries, readAuditEntriesForActor } from "@/lib/audit-persistence";
-import { initialData } from "@/lib/demo-data";
+import { emptyCrmData } from "@/lib/empty-crm-data";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders, rateLimitKey } from "@/lib/rate-limit";
 import {
@@ -18,6 +18,13 @@ import {
 import type { CrmData } from "@/lib/types";
 
 const CRM_STATE_ID = "primary";
+
+class CrmStateMissingError extends Error {
+  constructor() {
+    super("CRM state kaydı bulunamadı.");
+    this.name = "CrmStateMissingError";
+  }
+}
 
 function stateStats(data: CrmData) {
   return {
@@ -36,7 +43,8 @@ function logCrmState(event: string, fields: Record<string, unknown>) {
 
 async function readFullState() {
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
-  return normalizeCrmDataForSecurity(state?.data as Partial<CrmData> | undefined, initialData);
+  if (!state?.data) throw new CrmStateMissingError();
+  return normalizeCrmDataForSecurity(state.data as Partial<CrmData>, emptyCrmData);
 }
 
 async function writeFullState(data: CrmData) {
@@ -98,6 +106,9 @@ export async function GET(request: Request) {
     }
   } catch (error) {
     console.error("[crm-state] GET database read failed", error);
+    if (error instanceof CrmStateMissingError) {
+      return NextResponse.json({ error: "CRM verisi henüz production database içinde kurulmamış." }, { status: 503 });
+    }
     return NextResponse.json({ error: "CRM verisi database'den okunamadı." }, { status: 500 });
   }
 }
@@ -130,7 +141,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const incomingState = normalizeCrmDataForSecurity(body.data, initialData);
+    const incomingState = normalizeCrmDataForSecurity(body.data, fullState);
     logCrmState("SAVE merge başladı", {
       userId: actor.id,
       tenantId: actor.companyId ?? "platform",
@@ -175,6 +186,9 @@ export async function PUT(request: Request) {
     }
 
     console.error("[crm-state] SAVE database write failed", error);
+    if (error instanceof CrmStateMissingError) {
+      return NextResponse.json({ error: "CRM verisi henüz production database içinde kurulmamış." }, { status: 503 });
+    }
     return NextResponse.json({ error: "CRM verisi database'e kaydedilemedi." }, { status: 500 });
   }
 }
