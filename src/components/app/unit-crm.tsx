@@ -166,6 +166,7 @@ async function dispatchTaskInvite(input: {
     return {
       calendarInviteStatus: "Davet gönderildi",
       calendarInviteRsvpEnabled: Boolean(emailResult.rsvpEnabled),
+      googleCalendarResponseStatus: emailResult.rsvpEnabled ? "needsAction" : undefined,
     };
   }
 
@@ -3423,7 +3424,7 @@ function TasksPage({ user }: { user: User }) {
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{lead?.name ?? property?.title ?? task.description}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                        {task.googleCalendarResponseStatus && task.googleCalendarResponseStatus !== "needsAction" ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                        {task.googleCalendarResponseStatus && (task.googleCalendarResponseStatus !== "needsAction" || task.calendarInviteRsvpEnabled) ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       </div>
                       {task.calendarInviteRespondedAt ? (
                         <p className="mt-2 text-xs font-medium text-slate-500">Yanıt zamanı: {shortDate(task.calendarInviteRespondedAt)}</p>
@@ -3640,7 +3641,7 @@ function CalendarPage({ user }: { user: User }) {
                     <p className="mt-1 text-xs text-muted-foreground">{data.users.find((item) => item.id === task.assignedToId)?.name ?? "Danışman"}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {task.calendarInviteStatus ? <Badge label={task.calendarInviteStatus} /> : null}
-                      {task.googleCalendarResponseStatus && task.googleCalendarResponseStatus !== "needsAction" ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
+                      {task.googleCalendarResponseStatus && (task.googleCalendarResponseStatus !== "needsAction" || task.calendarInviteRsvpEnabled) ? <Badge label={humanize(task.googleCalendarResponseStatus)} /> : null}
                       {task.googleCalendarHtmlLink ? (
                         <a className="text-xs font-medium text-primary" href={task.googleCalendarHtmlLink} target="_blank" rel="noreferrer">Google event</a>
                       ) : null}
