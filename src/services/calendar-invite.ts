@@ -174,17 +174,33 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
     "Bu görev CRM üzerinde oluşturuldu. Davet yanıtı e-posta/takvim uygulamasından verilebilir.",
   ].filter(Boolean).join("\n");
   const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;background:#f3f7fc;padding:30px;color:#0f172a;">
-      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dbe6f3;border-radius:22px;overflow:hidden;box-shadow:0 22px 60px rgba(15,23,42,.10);">
-        <div style="padding:26px 30px 18px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg,#ffffff 0%,#f5f9ff 100%);">
+    <div style="font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
+      <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dbe6f3;border-radius:22px;overflow:hidden;box-shadow:0 18px 50px rgba(15,23,42,.10);">
+        <div style="padding:24px 28px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg,#ffffff 0%,#f7fbff 100%);">
           ${logoBlock}
-          <p style="margin:18px 0 7px;color:#2563eb;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Görev daveti</p>
-          <h1 style="margin:0;font-size:25px;line-height:1.25;color:#0f172a;font-weight:800;">${recipientTitle}</h1>
-          <p style="margin:8px 0 0;color:#64748b;font-size:14px;line-height:1.5;">${companyName} CRM üzerinden yeni görev atandı.</p>
+          <p style="margin:18px 0 7px;color:#2563eb;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Görev daveti</p>
+          <h1 style="margin:0;font-size:24px;line-height:1.25;color:#0f172a;font-weight:800;">${title}</h1>
+          <p style="margin:8px 0 0;color:#64748b;font-size:14px;line-height:1.5;">${recipientTitle} için ${companyName} CRM üzerinden görev oluşturuldu.</p>
         </div>
-        <div style="padding:26px 30px 30px;">
-          <div style="margin:0 0 22px;border:1px solid #dbeafe;background:#f8fbff;border-radius:18px;padding:18px 18px 16px;">
-            <p style="margin:0 0 12px;color:#1e3a8a;font-size:14px;font-weight:800;">Davet yanıtı</p>
+        <div style="padding:24px 28px 28px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;margin:0 0 18px;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="width:96px;color:#64748b;font-size:13px;font-weight:800;padding:15px 16px;border-bottom:1px solid #eef2f7;background:#f8fafc;">Kişi</td>
+              <td style="color:#0f172a;font-size:15px;font-weight:800;padding:15px 16px;border-bottom:1px solid #eef2f7;">${recipientTitle}</td>
+            </tr>
+            <tr>
+              <td style="width:96px;color:#64748b;font-size:13px;font-weight:800;padding:15px 16px;border-bottom:1px solid #eef2f7;background:#f8fafc;">Tarih</td>
+              <td style="color:#0f172a;font-size:15px;font-weight:800;padding:15px 16px;border-bottom:1px solid #eef2f7;">${timeLabel}</td>
+            </tr>
+            ${payload.task.location ? `
+            <tr>
+              <td style="width:96px;color:#64748b;font-size:13px;font-weight:800;padding:15px 16px;background:#f8fafc;">Konum</td>
+              <td style="color:#334155;font-size:15px;line-height:1.5;padding:15px 16px;">${location}</td>
+            </tr>` : ""}
+          </table>
+          ${payload.task.description ? `<div style="margin:0 0 20px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:16px 18px;color:#334155;font-size:15px;line-height:1.65;">${description}</div>` : ""}
+          <div style="margin:0 0 20px;border:1px solid #dbeafe;background:#f8fbff;border-radius:18px;padding:18px;">
+            <p style="margin:0 0 12px;color:#1e3a8a;font-size:14px;font-weight:800;">Yanıtını seç</p>
             <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px 0;">
               <tr>
                 <td><a href="${htmlText(rsvpLinks[0].url)}" style="display:inline-block;border-radius:999px;background:#16a34a;color:#ffffff;text-decoration:none;padding:12px 18px;font-size:14px;font-weight:800;">${rsvpLinks[0].label}</a></td>
@@ -193,41 +209,8 @@ export function buildCalendarInviteEmail(payload: EmailCalendarInvitePayload) {
               </tr>
             </table>
           </div>
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0 10px;margin:0 0 18px;">
-            <tr>
-              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Görev</td>
-              <td style="color:#0f172a;font-size:15px;font-weight:700;">${title}</td>
-            </tr>
-            <tr>
-              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Tarih</td>
-              <td style="color:#0f172a;font-size:15px;font-weight:700;">${timeLabel}</td>
-            </tr>
-            ${payload.task.location ? `
-            <tr>
-              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Konum</td>
-              <td style="color:#334155;font-size:15px;line-height:1.5;">${location}</td>
-            </tr>` : ""}
-            <tr>
-              <td style="width:92px;color:#64748b;font-size:13px;font-weight:700;">Durum</td>
-              <td><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:7px 11px;color:#1d4ed8;font-size:13px;font-weight:700;">Davet gönderildi</span></td>
-            </tr>
-          </table>
-          ${payload.task.description ? `<div style="margin:0 0 20px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:16px 18px;color:#334155;font-size:15px;line-height:1.65;">${description}</div>` : ""}
-          <div style="margin:0 0 20px;">
-            <p style="margin:0 0 10px;color:#64748b;font-size:13px;font-weight:700;">Yanıt linkleri</p>
-            <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px 0;">
-              <tr>
-                <td><a href="${htmlText(rsvpLinks[0].url)}" style="display:inline-block;border-radius:999px;background:#16a34a;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[0].label}</a></td>
-                <td><a href="${htmlText(rsvpLinks[1].url)}" style="display:inline-block;border-radius:999px;background:#f59e0b;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[1].label}</a></td>
-                <td><a href="${htmlText(rsvpLinks[2].url)}" style="display:inline-block;border-radius:999px;background:#ef4444;color:#ffffff;text-decoration:none;padding:11px 16px;font-size:14px;font-weight:800;">${rsvpLinks[2].label}</a></td>
-              </tr>
-            </table>
-          </div>
-          <div style="border:1px solid #dbeafe;background:#f0f7ff;border-radius:16px;padding:15px 17px;color:#1e3a8a;font-size:14px;line-height:1.65;">
-            Bu görev ${companyName} CRM üzerinde oluşturuldu. Daveti e-posta veya takvim uygulamandan yanıtlayabilirsin.
-          </div>
-          <p style="margin:20px 0 0;font-size:12px;line-height:1.6;color:#94a3b8;">
-            Ekli .ics daveti Apple Calendar, Outlook ve Google Calendar ile uyumludur.
+          <p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">
+            Bu görev ${companyName} CRM üzerinde oluşturuldu. Yanıtın CRM içindeki görev ve takvim durumunu günceller.
           </p>
         </div>
       </div>
