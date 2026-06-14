@@ -439,16 +439,16 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-7 px-2">
-        <ProductBrandMark />
-        <div className="mt-5 rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm shadow-blue-950/[0.03]">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+      <div className="mb-4 px-2">
+        <ProductBrandMark compact />
+        <div className="mt-3 rounded-xl border border-slate-200/80 bg-white/80 p-2.5 shadow-sm shadow-blue-950/[0.03]">
+          <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             {user.role === "ADMIN" ? "Platform" : "Aktif ofis"}
           </p>
           {user.role === "ADMIN" ? (
             <p className="text-sm font-semibold text-slate-900">Mertcan Aslan</p>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <ClientLogoMark client={client} fallbackName={name} compact />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900">{client?.name ?? name}</p>
@@ -503,12 +503,12 @@ function Avatar({ user }: { user: User }) {
 function ProductBrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`flex items-center ${compact ? "gap-2" : "gap-3"}`}>
-      <div className={`flex shrink-0 items-center justify-center rounded-2xl bg-slate-950 shadow-sm shadow-blue-950/10 ${compact ? "h-9 w-9" : "h-11 w-11"}`}>
-        <Image src="/brand/estafy-crm-icon.svg" alt="Estafy CRM ikonu" width={compact ? 30 : 36} height={compact ? 30 : 36} priority />
+      <div className={`flex shrink-0 items-center justify-center rounded-xl bg-slate-950 shadow-sm shadow-blue-950/10 ${compact ? "h-8 w-8" : "h-11 w-11"}`}>
+        <Image src="/brand/estafy-crm-icon.svg" alt="Estafy CRM ikonu" width={compact ? 25 : 36} height={compact ? 25 : 36} priority />
       </div>
       <div className="min-w-0">
-        <p className={`font-semibold uppercase tracking-[0.18em] text-slate-950 ${compact ? "text-sm" : "text-base"}`}>Estafy</p>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">CRM</p>
+        <p className={`font-semibold uppercase tracking-[0.18em] text-slate-950 ${compact ? "text-xs" : "text-base"}`}>Estafy</p>
+        <p className={`${compact ? "text-[8px]" : "text-[10px]"} font-semibold uppercase tracking-[0.2em] text-primary`}>CRM</p>
       </div>
     </div>
   );
@@ -2952,12 +2952,6 @@ function LeadPopup({
   }, [lead]);
 
   const daysLeft = daysUntilDate(tenantMoveOut);
-  const setTenantMoveOutAfterDays = (days: number) => {
-    const nextDate = new Date();
-    nextDate.setDate(nextDate.getDate() + days);
-    setTenantStatus("VAR");
-    setTenantMoveOut(nextDate.toLocaleDateString("en-CA"));
-  };
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
@@ -2995,7 +2989,7 @@ function LeadPopup({
                   <Input value={propertyOwnerPhone} onChange={(event) => setPropertyOwnerPhone(event.target.value)} placeholder="Telefon" />
                 </Field>
               </div>
-              <SectionTitle title="Kiracı / Kira Bilgisi" action={daysLeft !== null ? tenantReminderText(daysLeft) : "Tarih yok"} />
+              <SectionTitle title="Kiracı / Kira Bilgisi" action={daysLeft !== null ? tenantReminderText(daysLeft) : "Takvim aralığı"} />
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="Kiracı durumu">
                   <Select value={tenantStatus} onChange={(event) => setTenantStatus(event.target.value as NonNullable<Lead["tenantStatus"]>)}>
@@ -3012,40 +3006,23 @@ function LeadPopup({
                 <Field label="Kiracı isim soyisim">
                   <Input value={tenantName} onChange={(event) => setTenantName(event.target.value)} placeholder="Kiracı adı soyadı" disabled={tenantStatus === "YOK"} />
                 </Field>
-                <Field label="Giriş tarihi">
-                  <Input type="date" value={tenantMoveIn} onChange={(event) => setTenantMoveIn(event.target.value)} disabled={tenantStatus === "YOK"} />
-                </Field>
-                <Field label="Çıkış / sözleşme bitiş tarihi">
-                  <Input type="date" value={tenantMoveOut} onChange={(event) => setTenantMoveOut(event.target.value)} disabled={tenantStatus === "YOK"} />
-                </Field>
-                <div className="md:col-span-2">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">Hızlı hatırlatma testi</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "7 gün", days: 7 },
-                      { label: "5 gün", days: 5 },
-                      { label: "3 gün", days: 3 },
-                      { label: "Bugün", days: 0 },
-                    ].map((item) => (
-                      <Button
-                        key={item.label}
-                        type="button"
-                        size="sm"
-                        variant={item.days <= 3 ? "danger" : "outline"}
-                        onClick={() => setTenantMoveOutAfterDays(item.days)}
-                      >
-                        {item.label}
-                      </Button>
-                    ))}
+                <div className="rounded-xl border border-blue-100 bg-white p-3 md:col-span-2">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-primary">Giriş - çıkış tarih aralığı</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Giriş tarihi">
+                      <Input type="date" value={tenantMoveIn} onChange={(event) => setTenantMoveIn(event.target.value)} disabled={tenantStatus === "YOK"} />
+                    </Field>
+                    <Field label="Çıkış / sözleşme bitiş tarihi">
+                      <Input type="date" value={tenantMoveOut} onChange={(event) => setTenantMoveOut(event.target.value)} disabled={tenantStatus === "YOK"} />
+                    </Field>
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">Çıkış tarihi takvimde görünür; zamanı geldiğinde bildirim otomatik oluşur.</p>
                 </div>
-                <div className="rounded-md border border-blue-100 bg-white p-3 text-sm">
-                  <p className="font-semibold text-slate-950">Hatırlatma</p>
-                  <p className="mt-1 leading-5 text-muted-foreground">Tarih girilirse 7, 5, 3 gün kala ve çıkış günü bildirim oluşur.</p>
+                <div className="md:col-span-2">
+                  <Field label="Kiracı / kira notları">
+                    <Textarea className="min-h-24" value={tenantNotes} onChange={(event) => setTenantNotes(event.target.value)} placeholder="Kira durumu, özel şartlar, çıkış notu..." disabled={tenantStatus === "YOK"} />
+                  </Field>
                 </div>
-                <Field label="Kiracı / kira notları">
-                  <Textarea className="min-h-28 md:col-span-2" value={tenantNotes} onChange={(event) => setTenantNotes(event.target.value)} placeholder="Kira durumu, özel şartlar, çıkış notu..." disabled={tenantStatus === "YOK"} />
-                </Field>
               </div>
               <div className="mt-4 flex justify-end">
                 <Button
