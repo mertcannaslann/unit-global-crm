@@ -9,8 +9,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Emlak Ofisi CRM",
-  description: "Real estate office operating system for modern agencies",
+  title: "Estafy CRM",
+  description: "Emlak ofisleri için premium operasyon ve portföy yönetimi",
+  icons: {
+    icon: "/brand/estafy-crm-icon.svg",
+    shortcut: "/brand/estafy-crm-icon.svg",
+    apple: "/brand/estafy-apple-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
