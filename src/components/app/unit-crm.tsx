@@ -618,22 +618,38 @@ function PageHeader({ slug, user, client }: { slug: string[]; user: User; client
                 </Button>
               </div>
               <div className="max-h-96 overflow-y-auto">
-                {visibleNotifications.slice(0, 8).map((notification) => (
-                  <button
-                    key={notification.id}
-                    className="w-full border-b border-border px-4 py-3 text-left transition hover:bg-[#f7fbff]"
-                    onClick={() => {
-                      if (!notification.id.startsWith("tenant-reminder-")) markNotificationRead(notification.id);
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-950">{notification.title}</p>
-                      {notification.status === "OKUNMADI" ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" /> : null}
-                    </div>
-                    <p className="mt-1 text-sm leading-5 text-muted-foreground">{notification.message}</p>
-                    <p className="mt-2 text-xs text-slate-400">{shortDate(notification.createdAt)}</p>
-                  </button>
-                ))}
+                {visibleNotifications.slice(0, 8).map((notification) => {
+                  const isTenantReminder = notification.id.startsWith("tenant-reminder-");
+                  return (
+                    <button
+                      key={notification.id}
+                      className={`w-full border-b px-4 py-3 text-left transition ${
+                        isTenantReminder
+                          ? "border-rose-100 bg-rose-50 hover:bg-rose-100"
+                          : "border-border hover:bg-[#f7fbff]"
+                      }`}
+                      onClick={() => {
+                        if (!isTenantReminder) markNotificationRead(notification.id);
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          {isTenantReminder ? (
+                            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-rose-600 shadow-sm shadow-rose-950/5">
+                              <Bell className="h-3.5 w-3.5" />
+                            </span>
+                          ) : null}
+                          <p className={`text-sm font-semibold ${isTenantReminder ? "text-rose-900" : "text-slate-950"}`}>{notification.title}</p>
+                        </div>
+                        {notification.status === "OKUNMADI" ? (
+                          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${isTenantReminder ? "bg-rose-600" : "bg-primary"}`} />
+                        ) : null}
+                      </div>
+                      <p className={`mt-1 text-sm leading-5 ${isTenantReminder ? "text-rose-800" : "text-muted-foreground"}`}>{notification.message}</p>
+                      <p className={`mt-2 text-xs ${isTenantReminder ? "text-rose-500" : "text-slate-400"}`}>{shortDate(notification.createdAt)}</p>
+                    </button>
+                  );
+                })}
                 {!visibleNotifications.length ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Henüz bildirim yok. Yeni görev, lead veya portföy aksiyonu geldiğinde burada görünecek.
@@ -2556,7 +2572,7 @@ function LeadsPage({ user }: { user: User }) {
     });
     return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
   }, [data.users, groupBy, leads]);
-  const tableColumnCount = 6;
+  const tableColumnCount = 7;
 
   useEffect(() => {
     const detectedDistrict = extractDistrictFromAddress(watchedAddress);
@@ -2753,6 +2769,7 @@ function LeadsPage({ user }: { user: User }) {
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Adres</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Semt</th>
                 <th className="border border-slate-300 px-3 py-2 font-semibold">Kiracı Bilgisi</th>
+                <th className="border border-slate-300 px-3 py-2 font-semibold">İşlem</th>
               </tr>
             </thead>
             <tbody>
@@ -2775,13 +2792,37 @@ function LeadsPage({ user }: { user: User }) {
                     </tr>
                   ) : null}
                   {collapsedGroups[group.label] ? null : group.items.map((lead) => (
-                    <tr key={lead.id} className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]" onClick={() => setSelectedLead(lead)}>
+                    <tr
+                      key={lead.id}
+                      className="cursor-pointer bg-white align-top transition odd:bg-white even:bg-[#fbfdff] hover:bg-[#eef6ff]"
+                      tabIndex={0}
+                      onClick={() => setSelectedLead(lead)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedLead(lead);
+                        }
+                      }}
+                    >
                       <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{displayLeadId(lead)}</td>
                       <td className="max-w-[260px] whitespace-pre-line border border-slate-200 px-3 py-2 font-semibold leading-5 text-slate-950">{lead.propertyOwner || lead.name || "-"}</td>
                       <td className="border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-800">{lead.propertyOwnerPhone || lead.phone || "-"}</td>
                       <td className="max-w-[520px] whitespace-pre-line border border-slate-200 px-3 py-2 leading-5 text-slate-800">{lead.address || "-"}</td>
                       <td className="border border-slate-200 px-3 py-2 text-slate-800">{lead.preferredLocation || extractDistrictFromAddress(lead.address) || "-"}</td>
                       <td className="border border-slate-200 px-3 py-2"><Badge label={tenantSummary(lead)} /></td>
+                      <td className="border border-slate-200 px-3 py-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedLead(lead);
+                          }}
+                        >
+                          Aç
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </Fragment>
