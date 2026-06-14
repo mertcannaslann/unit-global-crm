@@ -110,6 +110,7 @@ model User {
   notifications  Notification[] @relation("TargetNotifications")
   activityLogs   ActivityLog[]
   assignments    Assignment[]
+  feedbackReports FeedbackReport[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
@@ -363,6 +364,27 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([targetCustomerId, createdAt])
   @@index([action, createdAt])
+}
+
+model FeedbackReport {
+  id           String   @id @default(cuid())
+  userId       String?
+  userEmail    String?
+  pageUrl      String
+  userAgent    String
+  message      String   @db.Text
+  details      String?  @db.Text
+  priority     String   @default("ORTA")
+  screenshotUrl String? @db.Text
+  errorContext String?  @db.Text
+  status       String   @default("open")
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([priority, createdAt])
+  @@index([userId, createdAt])
 }
 
 model Setting {
