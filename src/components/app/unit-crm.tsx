@@ -430,6 +430,14 @@ function MobileTopbar({ onMenu, user, client }: { onMenu: () => void; user: User
 
 function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; client?: OfficeClient; currentPath: string; nav: typeof navItems; onNavigate?: () => void }) {
   const name = workspaceName(user, client);
+  const router = useRouter();
+
+  async function handleSignOut() {
+    await signOut({ redirect: false });
+    router.replace("/login");
+    router.refresh();
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className={`mb-8 px-2 ${client?.logoUrl ? "space-y-2" : "flex items-center gap-3"}`}>
@@ -468,7 +476,7 @@ function Sidebar({ user, client, currentPath, nav, onNavigate }: { user: User; c
             <p className="truncate text-xs text-muted-foreground">{roleLabel(user.role)}</p>
           </div>
         </div>
-        <Button className="mt-3 h-9 w-full justify-start rounded-xl border-slate-200 bg-white/80" variant="outline" size="sm" onClick={() => signOut({ callbackUrl: "/login" })}>
+        <Button className="mt-3 h-9 w-full justify-start rounded-xl border-slate-200 bg-white/80" variant="outline" size="sm" onClick={handleSignOut}>
           <LogOut className="h-4 w-4" />
           Çıkış Yap
         </Button>
@@ -751,6 +759,11 @@ function PlatformAdminDashboard({ user }: { user: User }) {
     if (!response.ok) {
       const result = await response.json().catch(() => null) as { error?: string } | null;
       throw new Error(result?.error ?? "Kullanıcı şifreleri güvenli kasaya kaydedilemedi.");
+    }
+
+    const result = await response.json().catch(() => null) as { saved?: number; error?: string } | null;
+    if (!result || result.saved !== payload.length) {
+      throw new Error(result?.error ?? "Kullanıcı şifreleri doğrulanamadı.");
     }
   }
 
@@ -3311,7 +3324,7 @@ function TasksPage({ user }: { user: User }) {
           <Field label="Açıklama">
             <Textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="Danışmana gidecek görev notu" />
           </Field>
-          <Button className="h-12 px-6" onClick={createTaskAndInvite} disabled={inviteSending}>
+          <Button type="button" className="h-12 px-6" onClick={createTaskAndInvite} disabled={inviteSending}>
             {inviteSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
             Görev Oluştur ve Davet Gönder
           </Button>
@@ -3571,7 +3584,7 @@ function CalendarPage({ user }: { user: User }) {
               </Select>
             </div>
             {canManageOffice(user) ? <Select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}>{assignees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}
-            <Button className="w-full" onClick={createCalendarTask} disabled={inviteSending}>
+            <Button type="button" className="w-full" onClick={createCalendarTask} disabled={inviteSending}>
               {inviteSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
               Görev Oluştur ve Davet Gönder
             </Button>
