@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { clients as defaultClients, initialData } from "@/lib/demo-data";
+import { clients as defaultClients } from "@/lib/demo-data";
+import { emptyCrmData } from "@/lib/empty-crm-data";
 import { sahibindenDemoProvider } from "@/services/listing-providers/sahibinden-demo.provider";
 import type { CrmData, Lead, LeadAction, MarketComparable, Notification, OfficeClient, Property, Task, User } from "@/lib/types";
 
@@ -59,7 +60,7 @@ function normalizeListingIdentity(value?: string) {
 
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
-  const [data, setData] = useState<CrmData>(initialData);
+  const [data, setData] = useState<CrmData>(emptyCrmData);
   const [hydrated, setHydrated] = useState(false);
   const dirtyRef = useRef(false);
   const saveErrorShown = useRef(false);
@@ -92,7 +93,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         if (!cancelled) {
-          toast.error("CRM verisi serverdan okunamadı. Geçici demo veri gösteriliyor.");
+          toast.error("CRM verisi serverdan okunamadı. Lütfen production database kurulumunu kontrol edin.");
         }
       } finally {
         if (!cancelled) {
