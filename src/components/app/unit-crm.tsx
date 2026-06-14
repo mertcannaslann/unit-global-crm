@@ -2429,10 +2429,6 @@ function tenantSummary(lead: Lead) {
   return "Belirtilmedi";
 }
 
-function displayLeadDate(value?: string) {
-  return value ? shortDate(value) : "Tarih yok";
-}
-
 function displayLeadId(lead: Pick<Lead, "id" | "externalId">) {
   if (lead.externalId?.trim()) return lead.externalId.trim();
   const importMatch = lead.id.match(/^lead-import-\d+-(.+)$/);
@@ -2909,30 +2905,6 @@ function LeadPopup({
                 </Field>
               </div>
               <SectionTitle title="Kiracı / Kira Bilgisi" action={daysLeft !== null ? tenantReminderText(daysLeft) : "Tarih yok"} />
-              <div className="mb-4 grid gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-primary">
-                      <CalendarDays className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Giriş tarihi</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-950">{displayLeadDate(tenantMoveIn)}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
-                      <CalendarDays className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Çıkış tarihi</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-950">{displayLeadDate(tenantMoveOut)}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="Kiracı durumu">
                   <Select value={tenantStatus} onChange={(event) => setTenantStatus(event.target.value as NonNullable<Lead["tenantStatus"]>)}>
@@ -3405,6 +3377,7 @@ function CalendarPage({ user }: { user: User }) {
   const assignees = canManageOffice(user) ? data.users.filter((item) => item.active && item.role !== "ADMIN") : [user];
   const [assignedToId, setAssignedToId] = useState(assignees[0]?.id ?? user.id);
   const tasks = data.tasks.filter((task) => canSeeOffice(user) || task.assignedToId === user.id);
+  const tenantExitLeads = data.leads.filter((lead) => (canSeeOffice(user) || lead.consultantId === user.id) && lead.tenantStatus === "VAR" && lead.tenantMoveOut);
   const calendarProperties = data.properties.filter((property) => canSeeOffice(user) || property.consultantId === user.id);
   const activeClient = clientForUser(data, user);
   const companyName = activeClient?.name ?? data.setting.companyName;
@@ -3422,6 +3395,10 @@ function CalendarPage({ user }: { user: User }) {
   const dayEvents = (day: number) => tasks.filter((task) => {
     const date = new Date(task.dueDate);
     return date.getFullYear() === calendarYear && date.getMonth() === calendarMonth && date.getDate() === day;
+  });
+  const tenantExitEvents = (day: number) => tenantExitLeads.filter((lead) => {
+    const date = dateOnly(lead.tenantMoveOut ?? "");
+    return !!date && date.getFullYear() === calendarYear && date.getMonth() === calendarMonth && date.getDate() === day;
   });
 
   const createCalendarTask = async () => {
@@ -3501,6 +3478,7 @@ function CalendarPage({ user }: { user: User }) {
         <div className="grid grid-cols-7 bg-white">
           {calendarCells.map((day, index) => {
             const events = day ? dayEvents(day) : [];
+            const tenantEvents = day ? tenantExitEvents(day) : [];
             const isSelected = day === selectedDay;
             return (
               <button
@@ -3513,12 +3491,17 @@ function CalendarPage({ user }: { user: User }) {
                   <>
                     <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${isSelected ? "bg-primary text-white" : "text-slate-700"}`}>{day}</span>
                     <div className="mt-2 space-y-1">
+                      {tenantEvents.slice(0, 2).map((lead) => (
+                        <div key={`tenant-${lead.id}`} className="truncate rounded-md bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
+                          Kiracı çıkışı · {lead.propertyOwner || lead.name}
+                        </div>
+                      ))}
                       {events.slice(0, 2).map((event) => (
                         <div key={event.id} className="truncate rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-medium text-primary">
                           {humanize(event.type)} · {event.title}
                         </div>
                       ))}
-                      {events.length > 2 ? <p className="text-xs text-muted-foreground">+{events.length - 2} aksiyon</p> : null}
+                      {events.length + tenantEvents.length > 4 ? <p className="text-xs text-muted-foreground">+{events.length + tenantEvents.length - 4} aksiyon</p> : null}
                     </div>
                   </>
                 ) : null}
@@ -3531,6 +3514,30 @@ function CalendarPage({ user }: { user: User }) {
         <Card className="p-5">
           <SectionTitle title={`${selectedDay} ${calendarMonthLabel}`} />
           <div className="space-y-3">
+            {tenantExitEvents(selectedDay).map((lead) => {
+              const daysLeft = daysUntilDate(lead.tenantMoveOut);
+              return (
+                <Link
+                  key={`tenant-detail-${lead.id}`}
+                  href={`/musteriler/${lead.id}`}
+                  className="block rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm shadow-sm shadow-rose-950/5 transition hover:bg-rose-100"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-rose-600">
+                      <Bell className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-rose-900">Kiracı çıkışı / sözleşme bitişi</p>
+                      <p className="mt-1 font-medium text-slate-950">{lead.propertyOwner || lead.name}</p>
+                      <p className="mt-1 text-xs text-rose-700">
+                        {daysLeft !== null ? tenantReminderText(daysLeft) : "Çıkış tarihi"}{lead.tenantName ? ` · Kiracı: ${lead.tenantName}` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">{lead.address || lead.preferredLocation || "Adres yok"}</p>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
             {dayEvents(selectedDay).map((task) => (
               <div key={task.id} className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
                 <div className="flex items-start gap-3">
@@ -3556,7 +3563,7 @@ function CalendarPage({ user }: { user: User }) {
                 </div>
               </div>
             ))}
-            {!dayEvents(selectedDay).length ? <p className="rounded-lg border border-dashed border-blue-100 bg-[#f7fbff] p-4 text-sm text-muted-foreground">Bu gün için görev yok.</p> : null}
+            {!dayEvents(selectedDay).length && !tenantExitEvents(selectedDay).length ? <p className="rounded-lg border border-dashed border-blue-100 bg-[#f7fbff] p-4 text-sm text-muted-foreground">Bu gün için görev yok.</p> : null}
           </div>
         </Card>
         <Card className="p-5">
