@@ -158,7 +158,9 @@ async function dispatchTaskInvite(input: {
       companyLogoUrl: input.companyLogoUrl,
     }),
   });
-  const emailResult = await emailResponse.json() as { sent?: boolean; mode?: "email"; error?: string };
+  const emailResult = await emailResponse.json().catch(() => ({
+    error: "Davet servisi boş yanıt döndürdü.",
+  })) as { sent?: boolean; mode?: "email"; error?: string };
   if (emailResponse.ok && emailResult.sent) {
     return {
       calendarInviteStatus: "Davet gönderildi",
