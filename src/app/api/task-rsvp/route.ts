@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
-import { initialData } from "@/lib/demo-data";
+import { emptyCrmData } from "@/lib/empty-crm-data";
 import { prisma } from "@/lib/prisma";
 import type { CalendarInviteResponse } from "@/services/calendar-invite";
 import { verifyTaskRsvp } from "@/services/calendar-invite";
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
   }
 
   const state = await prisma.crmState.findUnique({ where: { id: CRM_STATE_ID } });
-  const currentData = (state?.data as CrmData | null) ?? initialData;
+  const currentData = (state?.data as CrmData | null) ?? emptyCrmData;
   let taskTitle = "";
   const respondedAt = new Date().toISOString();
   const nextData: CrmData = {
