@@ -101,12 +101,12 @@ export function buildIcsInvite(payload: EmailCalendarInvitePayload) {
   const end = calendarDate(payload.task.endDate ?? defaultEndDate(payload.task.dueDate));
   const now = calendarDate(new Date().toISOString());
   const reminderMinutes = payload.task.reminderMinutes ?? 30;
-  const uid = `${payload.task.id}@unit-crm`;
+  const uid = `${payload.task.id}@estafy-crm`;
 
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Unit CRM//Calendar Invite//TR",
+    "PRODID:-//Estafy CRM//Calendar Invite//TR",
     "CALSCALE:GREGORIAN",
     "METHOD:REQUEST",
     "BEGIN:VEVENT",
